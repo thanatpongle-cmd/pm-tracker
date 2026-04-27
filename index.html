@@ -1062,7 +1062,7 @@ function gdriveLogin() {
     callback: async (resp) => {
       if (resp.error) { setSyncState('error', 'เชื่อมต่อไม่สำเร็จ: ' + resp.error); return; }
       accessToken = resp.access_token;
-      localStorage.setItem('gdrive_token', accessToken);
+      // ไม่บันทึก token ลง localStorage เพื่อความปลอดภัย
       setSyncState('syncing', 'กำลังโหลดข้อมูลจาก Google Drive...');
       await loadFromDrive();
     }
@@ -1071,14 +1071,17 @@ function gdriveLogin() {
 }
 
 function gdriveLogout() {
-  if (accessToken) google.accounts.oauth2.revoke(accessToken);
+  if (accessToken) google.accounts.oauth2.revoke(accessToken, () => {});
   accessToken = null; driveFileId = null;
+  // ล้าง localStorage ทั้งหมด
   localStorage.removeItem('gdrive_token');
   localStorage.removeItem('gdrive_file_id');
+  // ล้าง Google session cache
+  google.accounts.id.disableAutoSelect();
   // ล้างข้อมูลออกจากหน้าจอ
   tasks = [];
   setSyncState('disconnected', 'ยังไม่ได้เชื่อมต่อ Google Drive');
-  showToast('ออกจาก Google Drive แล้ว');
+  showToast('ออกจากระบบเรียบร้อยแล้ว');
 }
 
 // ===== DRIVE FILE OPERATIONS =====
@@ -1103,7 +1106,7 @@ async function loadFromDrive() {
       showToast('✅ สร้างไฟล์ใน Google Drive สำเร็จ');
     } else {
       driveFileId = file.id;
-      localStorage.setItem('gdrive_file_id', driveFileId);
+      // ไม่บันทึก fileId ลง localStorage - เก็บแค่ใน memory
       // โหลดข้อมูลจาก Drive
       setSyncState('syncing', 'กำลังโหลดข้อมูล...');
       const res = await fetch(
@@ -1155,7 +1158,7 @@ async function saveToDrive() {
       );
       const created = await res.json();
       driveFileId = created.id;
-      localStorage.setItem('gdrive_file_id', driveFileId);
+      // ไม่บันทึก fileId ลง localStorage
     }
     const now = new Date().toLocaleTimeString('th-TH');
     setSyncState('connected', `✓ เชื่อมต่อแล้ว · Sync ล่าสุด: ${now}`);
@@ -1202,20 +1205,12 @@ function saveData() {
   }
 }
 
-// ===== TRY AUTO-LOGIN (ถ้าเคย login ไว้แล้ว) =====
+// ===== TRY AUTO-LOGIN (ปิดใช้งาน - ต้อง login ใหม่ทุกครั้ง) =====
 function tryAutoLogin() {
-  const savedToken = localStorage.getItem('gdrive_token');
-  if (!savedToken) return;
-  // ตรวจสอบ token ยังใช้ได้อยู่มั้ย
-  fetch('https://www.googleapis.com/oauth2/v1/tokeninfo?access_token=' + savedToken)
-    .then(r => r.json())
-    .then(info => {
-      if (info.error) { localStorage.removeItem('gdrive_token'); return; }
-      accessToken = savedToken;
-      driveFileId = localStorage.getItem('gdrive_file_id') || null;
-      setSyncState('syncing', 'กำลังเชื่อมต่อ Google Drive...');
-      loadFromDrive();
-    }).catch(() => {});
+  // ไม่ทำ auto-login เพื่อความปลอดภัย
+  // ล้าง token เก่าทิ้งทุกครั้งที่เปิดหน้าเว็บ
+  localStorage.removeItem('gdrive_token');
+  localStorage.removeItem('gdrive_file_id');
 }
 
 // ===== NAVIGATION =====
@@ -1691,8 +1686,19 @@ function handleImport(e) {
 loadData();
 renderDashboard();
 updateProjectFilter();
-// ลอง auto-login ถ้าเคยเชื่อมไว้แล้ว (รอ Google script โหลดก่อน)
+// ล้าง token เก่าและแสดงหน้า login ทุกครั้งที่เปิด
 window.addEventListener('load', () => setTimeout(tryAutoLogin, 800));
+
+// ตัดการเชื่อมต่อเมื่อปิดหน้าเว็บหรือ tab เท่านั้น
+window.addEventListener('beforeunload', () => {
+  if (accessToken) {
+    google.accounts.oauth2.revoke(accessToken, () => {});
+    accessToken = null;
+    driveFileId = null;
+  }
+  localStorage.removeItem('gdrive_token');
+  localStorage.removeItem('gdrive_file_id');
+});
 </script>
 </body>
 </html>
