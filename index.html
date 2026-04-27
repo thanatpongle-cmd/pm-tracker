@@ -792,7 +792,6 @@
               <option value="">สถานะทั้งหมด</option>
               <option>Complete</option>
               <option>Close</option>
-              <option>On Progress</option>
               <option>In Progress</option>
               <option>Approve</option>
               <option>Pending</option>
@@ -895,7 +894,6 @@
                 <select class="form-select" id="f-status">
                   <option value="">-- เลือกสถานะ --</option>
                   <option>Pending</option>
-                  <option>On Progress</option>
                   <option>In Progress</option>
                   <option>Approve</option>
                   <option>Complete</option>
@@ -1119,7 +1117,7 @@
         <div class="form-group">
           <label class="form-label">สถานะงาน</label>
           <select class="form-select" id="e-status">
-            <option>Pending</option><option>On Progress</option><option>In Progress</option>
+            <option>Pending</option><option>In Progress</option>
             <option>Approve</option><option>Complete</option><option>Close</option>
           </select>
         </div>
@@ -1186,7 +1184,7 @@
 const INITIAL_DATA = [
   {id:1, date:"2026-03-09", project:"Ms Online", ticket:"", type:"Implement", desc:"ต้องการเอา Font custom ขึ้นไปใช้งานบน Ms Online", team:"", status:"Close", start:"", due:"", finish:"", issue:"E1 ไม่รองรับในส่วนของการนำ Custom font ขึ้นไปใช้งาน", fix:"", result:""},
   {id:2, date:"2026-03-09", project:"Ms Online", ticket:"", type:"Implement", desc:"หาวิธีสร้าง Template Signature Outlook Online", team:"", status:"Close", start:"", due:"", finish:"", issue:"ผู้ส่งไม่สามารถมองเห็น Template Signature ได้", fix:"สร้าง Rule ให้สแตม Signature", result:""},
-  {id:3, date:"2026-03-09", project:"Claude AI", ticket:"S26015051", type:"Implement", desc:"ขอ Admin Account เพื่อ Register Claude AI และ Config SSO กับ Microsoft Entra เป็นระยะเวลา 2 เดือน", team:"", status:"On Progress", start:"2026-03-09", due:"", finish:"", issue:"", fix:"", result:""},
+  {id:3, date:"2026-03-09", project:"Claude AI", ticket:"S26015051", type:"Implement", desc:"ขอ Admin Account เพื่อ Register Claude AI และ Config SSO กับ Microsoft Entra เป็นระยะเวลา 2 เดือน", team:"", status:"In Progress", start:"2026-03-09", due:"", finish:"", issue:"", fix:"", result:""},
   {id:4, date:"2026-03-09", project:"Claude AI", ticket:"S26015106", type:"Implement", desc:"สร้าง AD Group NTL-ClaudeAI-Users พร้อมเพิ่ม 2 users แรก", team:"", status:"Complete", start:"2026-03-09", due:"", finish:"2026-03-12", issue:"", fix:"", result:""},
   {id:5, date:"2026-03-10", project:"Claude AI", ticket:"S26015424", type:"Implement", desc:"เพิ่ม Claude.AI เข้า Inventory APP ID: A0588", team:"", status:"Complete", start:"2026-03-10", due:"", finish:"2026-03-12", issue:"", fix:"", result:""},
   {id:6, date:"2026-03-10", project:"Claude AI", ticket:"S26015462", type:"Implement", desc:"เพิ่ม TXT Record ของแอพ Claude.AI ใน Cloudflare สำหรับ domain verification", team:"", status:"Complete", start:"2026-03-10", due:"", finish:"2026-03-12", issue:"", fix:"", result:""},
@@ -1430,7 +1428,7 @@ function setToday() {
 function badgeClass(s) {
   if (s === 'Complete') return 'badge-complete';
   if (s === 'Close') return 'badge-close';
-  if (s === 'On Progress' || s === 'In Progress') return 'badge-progress';
+  if (s === 'In Progress') return 'badge-progress';
   if (s === 'Approve') return 'badge-approve';
   return 'badge-pending';
 }
@@ -1464,7 +1462,7 @@ function renderDashboard() {
   const completeOnly = tasks.filter(t => t.status === 'Complete').length;
   const closeOnly    = tasks.filter(t => t.status === 'Close').length;
   const doneCombined = completeOnly + closeOnly;
-  const inprog = tasks.filter(t => t.status === 'On Progress' || t.status === 'In Progress').length;
+  const inprog = tasks.filter(t => t.status === 'In Progress').length;
   const pending = tasks.filter(t => t.status === 'Pending').length;
   const projects = [...new Set(tasks.map(t => t.project).filter(Boolean))].length;
   const pct = total ? Math.round(doneCombined / total * 100) : 0;
@@ -1493,7 +1491,7 @@ function renderDashboard() {
     <div class="metric-card" onclick="showGroupModal('inprog','กำลังดำเนินการ')">
       <div class="metric-label">กำลังดำเนินการ</div>
       <div class="metric-value" style="color:#7a4a00">${inprog}</div>
-      <div class="metric-sub">On Progress + In Progress · คลิกเพื่อดู</div>
+      <div class="metric-sub">In Progress · คลิกเพื่อดู</div>
     </div>
     <div class="metric-card" onclick="showGroupModal('pending','รอดำเนินการ (Pending)')">
       <div class="metric-label">รอดำเนินการ</div>
@@ -1518,7 +1516,7 @@ function showGroupModal(group, title) {
   let filtered;
   if (group === 'all') filtered = [...tasks];
   else if (group === 'done') filtered = tasks.filter(t => t.status === 'Complete' || t.status === 'Close');
-  else if (group === 'inprog') filtered = tasks.filter(t => t.status === 'On Progress' || t.status === 'In Progress');
+  else if (group === 'inprog') filtered = tasks.filter(t => t.status === 'In Progress');
   else if (group === 'pending') filtered = tasks.filter(t => t.status === 'Pending');
   else if (group === 'approve') filtered = tasks.filter(t => t.status === 'Approve');
   else if (group === 'chg') filtered = tasks.filter(t => /^CHG-/i.test(t.ticket));
@@ -1557,7 +1555,7 @@ function renderCharts() {
     if (t.type) typeCounts[t.type] = (typeCounts[t.type] || 0) + 1;
   });
 
-  const statusColors = { Complete:'#2d6a2d', Close:'#888780', 'On Progress':'#e0920a', 'In Progress':'#e0920a', Approve:'#1a4a8a', Pending:'#7a2060' };
+  const statusColors = { Complete:'#2d6a2d', Close:'#888780', 'In Progress':'#e0920a', Approve:'#1a4a8a', Pending:'#7a2060' };
 
   if (charts.status) charts.status.destroy();
   charts.status = new Chart(document.getElementById('chartStatus'), {
