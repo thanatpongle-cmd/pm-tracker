@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>PM Task Tracker Dashboard</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
 
@@ -449,6 +450,43 @@
   }
   .group-task-row.header:hover { background: var(--surface2); }
 
+  /* GOOGLE DRIVE SYNC */
+  .sync-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px;
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+    color: var(--text2);
+    flex-shrink: 0;
+  }
+  .sync-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--text3);
+    flex-shrink: 0;
+    transition: background 0.3s;
+  }
+  .sync-dot.connected { background: #2d6a2d; }
+  .sync-dot.syncing { background: #e0920a; animation: pulse 1s infinite; }
+  .sync-dot.error { background: #8a2020; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+  .sync-label { flex: 1; }
+  .btn-google {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 14px;
+    border: 1px solid var(--border2);
+    border-radius: var(--radius);
+    background: var(--surface);
+    font-size: 12px; font-family: var(--font); font-weight: 500;
+    cursor: pointer; color: var(--text);
+    transition: all 0.15s;
+  }
+  .btn-google:hover { background: var(--surface2); }
+  .btn-google img { width: 16px; height: 16px; }
+
   /* RESPONSIVE */
   @media (max-width: 1100px) {
     .metrics-grid { grid-template-columns: repeat(3, 1fr); }
@@ -527,8 +565,8 @@
         <span class="nav-icon">➕</span> เพิ่มงานใหม่
       </div>
     </div>
-    <div class="sidebar-footer">
-      v1.0 · Data stored locally
+    <div class="sidebar-footer" id="sidebar-footer">
+      v1.1 · Local Storage
     </div>
   </div>
 
@@ -542,6 +580,17 @@
         <input type="file" id="csv-file-input" accept=".csv" style="display:none" onchange="handleImport(event)">
         <button class="btn btn-primary" onclick="switchView('add', document.querySelector('.nav-item:nth-child(3)'))">+ เพิ่มงาน</button>
       </div>
+    </div>
+
+    <!-- GOOGLE DRIVE SYNC BAR -->
+    <div class="sync-bar" id="sync-bar">
+      <div class="sync-dot" id="sync-dot"></div>
+      <span class="sync-label" id="sync-label">ยังไม่ได้เชื่อมต่อ Google Drive</span>
+      <button class="btn-google" id="btn-gdrive-login" onclick="gdriveLogin()">
+        <img src="https://www.google.com/favicon.ico" alt="Google"> เชื่อมต่อ Google Drive
+      </button>
+      <button class="btn" id="btn-gdrive-sync" onclick="syncNow()" style="display:none;font-size:12px;padding:5px 12px">🔄 Sync ตอนนี้</button>
+      <button class="btn" id="btn-gdrive-logout" onclick="gdriveLogout()" style="display:none;font-size:12px;padding:5px 12px;color:var(--text3)">ออกจากระบบ</button>
     </div>
 
     <div class="content">
@@ -885,18 +934,196 @@ const PAGE_SIZE = 15;
 let editingId = null;
 let charts = {};
 
+// ===== GOOGLE DRIVE CONFIG =====
+const CLIENT_ID = '871942533931-pehfqfm2m9v0v075dvo0ia1hmd5trim1.apps.googleusercontent.com';
+const SCOPES = 'https://www.googleapis.com/auth/drive.file';
+const FILE_NAME = 'pm_tracker_data.json';
+let accessToken = null;
+let driveFileId = null;
+let syncTimer = null;
+let pendingSave = false;
+
+// ===== SYNC UI =====
+function setSyncState(state, label) {
+  const dot = document.getElementById('sync-dot');
+  const lbl = document.getElementById('sync-label');
+  const btnLogin = document.getElementById('btn-gdrive-login');
+  const btnSync = document.getElementById('btn-gdrive-sync');
+  const btnLogout = document.getElementById('btn-gdrive-logout');
+  const footer = document.getElementById('sidebar-footer');
+  dot.className = 'sync-dot' + (state !== 'disconnected' ? ' ' + state : '');
+  lbl.textContent = label;
+  if (state === 'disconnected') {
+    btnLogin.style.display = ''; btnSync.style.display = 'none'; btnLogout.style.display = 'none';
+    footer.textContent = 'v1.1 · Local Storage';
+  } else {
+    btnLogin.style.display = 'none'; btnSync.style.display = ''; btnLogout.style.display = '';
+    footer.textContent = 'v1.1 · Google Drive';
+  }
+}
+
+// ===== GOOGLE OAUTH =====
+function gdriveLogin() {
+  const client = google.accounts.oauth2.initTokenClient({
+    client_id: CLIENT_ID,
+    scope: SCOPES,
+    callback: async (resp) => {
+      if (resp.error) { setSyncState('error', 'เชื่อมต่อไม่สำเร็จ: ' + resp.error); return; }
+      accessToken = resp.access_token;
+      localStorage.setItem('gdrive_token', accessToken);
+      setSyncState('syncing', 'กำลังโหลดข้อมูลจาก Google Drive...');
+      await loadFromDrive();
+    }
+  });
+  client.requestAccessToken();
+}
+
+function gdriveLogout() {
+  if (accessToken) google.accounts.oauth2.revoke(accessToken);
+  accessToken = null; driveFileId = null;
+  localStorage.removeItem('gdrive_token');
+  localStorage.removeItem('gdrive_file_id');
+  setSyncState('disconnected', 'ยังไม่ได้เชื่อมต่อ Google Drive');
+  showToast('ออกจาก Google Drive แล้ว ข้อมูลยังอยู่ใน Local Storage ครับ');
+}
+
+// ===== DRIVE FILE OPERATIONS =====
+async function findDriveFile() {
+  const res = await fetch(
+    `https://www.googleapis.com/drive/v3/files?q=name='${FILE_NAME}' and trashed=false&spaces=drive&fields=files(id,name,modifiedTime)`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  const data = await res.json();
+  return data.files && data.files.length > 0 ? data.files[0] : null;
+}
+
+async function loadFromDrive() {
+  try {
+    setSyncState('syncing', 'กำลังค้นหาไฟล์ใน Google Drive...');
+    let file = await findDriveFile();
+    if (!file) {
+      // ไม่มีไฟล์ใน Drive → ใช้ข้อมูล local แล้ว save ขึ้น Drive
+      setSyncState('syncing', 'ยังไม่มีไฟล์ใน Drive — กำลังสร้างใหม่...');
+      await saveToDrive();
+      setSyncState('connected', `✓ เชื่อมต่อแล้ว · ไฟล์: ${FILE_NAME}`);
+      showToast('✅ สร้างไฟล์ใน Google Drive สำเร็จ');
+    } else {
+      driveFileId = file.id;
+      localStorage.setItem('gdrive_file_id', driveFileId);
+      // โหลดข้อมูลจาก Drive
+      setSyncState('syncing', 'กำลังโหลดข้อมูล...');
+      const res = await fetch(
+        `https://www.googleapis.com/drive/v3/files/${driveFileId}?alt=media`,
+        { headers: { Authorization: `Bearer ${accessToken}` } }
+      );
+      const data = await res.json();
+      if (data.tasks) {
+        tasks = data.tasks;
+        nextId = data.nextId || 100;
+        saveLocal();
+        renderDashboard();
+        updateProjectFilter();
+        if (document.getElementById('view-tasks').classList.contains('active')) renderTasks();
+      }
+      const mod = new Date(file.modifiedTime).toLocaleString('th-TH');
+      setSyncState('connected', `✓ เชื่อมต่อแล้ว · อัปเดตล่าสุด: ${mod}`);
+      showToast('✅ โหลดข้อมูลจาก Google Drive สำเร็จ');
+    }
+    startAutoSync();
+  } catch(e) {
+    setSyncState('error', 'โหลดข้อมูลไม่สำเร็จ: ' + e.message);
+    console.error(e);
+  }
+}
+
+async function saveToDrive() {
+  if (!accessToken) return;
+  try {
+    setSyncState('syncing', 'กำลัง Sync ขึ้น Google Drive...');
+    const content = JSON.stringify({ tasks, nextId, savedAt: new Date().toISOString() });
+    const blob = new Blob([content], { type: 'application/json' });
+    let res;
+    if (driveFileId) {
+      // อัปเดตไฟล์เดิม
+      res = await fetch(
+        `https://www.googleapis.com/upload/drive/v3/files/${driveFileId}?uploadType=media`,
+        { method: 'PATCH', headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' }, body: blob }
+      );
+    } else {
+      // สร้างไฟล์ใหม่
+      const meta = JSON.stringify({ name: FILE_NAME, mimeType: 'application/json' });
+      const form = new FormData();
+      form.append('metadata', new Blob([meta], { type: 'application/json' }));
+      form.append('file', blob);
+      res = await fetch(
+        'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',
+        { method: 'POST', headers: { Authorization: `Bearer ${accessToken}` }, body: form }
+      );
+      const created = await res.json();
+      driveFileId = created.id;
+      localStorage.setItem('gdrive_file_id', driveFileId);
+    }
+    const now = new Date().toLocaleTimeString('th-TH');
+    setSyncState('connected', `✓ เชื่อมต่อแล้ว · Sync ล่าสุด: ${now}`);
+    pendingSave = false;
+  } catch(e) {
+    setSyncState('error', 'Sync ไม่สำเร็จ: ' + e.message);
+    console.error(e);
+  }
+}
+
+function startAutoSync() {
+  if (syncTimer) clearInterval(syncTimer);
+  syncTimer = setInterval(() => {
+    if (pendingSave && accessToken) saveToDrive();
+  }, 30000); // auto sync ทุก 30 วินาที ถ้ามีการเปลี่ยนแปลง
+}
+
+async function syncNow() {
+  if (!accessToken) { showToast('⚠️ กรุณาเชื่อมต่อ Google Drive ก่อนครับ'); return; }
+  await saveToDrive();
+  showToast('🔄 Sync ขึ้น Google Drive เรียบร้อยแล้ว');
+}
+
+// ===== LOCAL STORAGE =====
+function saveLocal() {
+  localStorage.setItem('pm_tasks', JSON.stringify(tasks));
+  localStorage.setItem('pm_nextId', nextId);
+}
+
 function loadData() {
   try {
     const saved = localStorage.getItem('pm_tasks');
     const savedId = localStorage.getItem('pm_nextId');
     if (saved) { tasks = JSON.parse(saved); nextId = savedId ? parseInt(savedId) : 100; }
-    else { tasks = INITIAL_DATA.map(t => ({...t})); nextId = 100; saveData(); }
+    else { tasks = INITIAL_DATA.map(t => ({...t})); nextId = 100; saveLocal(); }
   } catch(e) { tasks = INITIAL_DATA.map(t => ({...t})); }
 }
 
 function saveData() {
-  localStorage.setItem('pm_tasks', JSON.stringify(tasks));
-  localStorage.setItem('pm_nextId', nextId);
+  saveLocal();
+  if (accessToken) {
+    pendingSave = true;
+    // debounce — save จริงหลังหยุดแก้ 3 วินาที
+    if (window._saveDebounce) clearTimeout(window._saveDebounce);
+    window._saveDebounce = setTimeout(() => saveToDrive(), 3000);
+  }
+}
+
+// ===== TRY AUTO-LOGIN (ถ้าเคย login ไว้แล้ว) =====
+function tryAutoLogin() {
+  const savedToken = localStorage.getItem('gdrive_token');
+  if (!savedToken) return;
+  // ตรวจสอบ token ยังใช้ได้อยู่มั้ย
+  fetch('https://www.googleapis.com/oauth2/v1/tokeninfo?access_token=' + savedToken)
+    .then(r => r.json())
+    .then(info => {
+      if (info.error) { localStorage.removeItem('gdrive_token'); return; }
+      accessToken = savedToken;
+      driveFileId = localStorage.getItem('gdrive_file_id') || null;
+      setSyncState('syncing', 'กำลังเชื่อมต่อ Google Drive...');
+      loadFromDrive();
+    }).catch(() => {});
 }
 
 // ===== NAVIGATION =====
@@ -1372,6 +1599,8 @@ function handleImport(e) {
 loadData();
 renderDashboard();
 updateProjectFilter();
+// ลอง auto-login ถ้าเคยเชื่อมไว้แล้ว (รอ Google script โหลดก่อน)
+window.addEventListener('load', () => setTimeout(tryAutoLogin, 800));
 </script>
 </body>
 </html>
