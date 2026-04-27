@@ -646,6 +646,18 @@
   .tab-content { display: none; padding: 16px; max-height: 420px; overflow-y: auto; }
   .tab-content.active { display: block; }
   .ou-tag { display: inline-block; background: var(--surface2); border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px; font-size: 10px; color: var(--text2); }
+  /* USER PANEL IN TASK FORM */
+  .user-panel { display:none; grid-column:1/-1; border:1px solid var(--border); border-radius:var(--radius-lg); overflow:hidden; margin-top:4px; }
+  .user-panel.visible { display:block; }
+  .user-panel-header { background:var(--accent-light); border-bottom:1px solid var(--border); padding:10px 14px; display:flex; align-items:center; justify-content:space-between; }
+  .user-panel-title { font-size:12px; font-weight:600; color:var(--accent); }
+  .user-rows { padding:10px 14px; display:flex; flex-direction:column; gap:6px; }
+  .user-row { display:grid; grid-template-columns:1fr 120px 1fr 36px; gap:6px; align-items:center; }
+  .user-row input, .user-row select { padding:5px 8px; border:1px solid var(--border2); border-radius:6px; font-size:12px; font-family:var(--font); background:var(--surface); color:var(--text); outline:none; }
+  .user-row input:focus, .user-row select:focus { border-color:var(--accent); }
+  .user-row-del { width:28px; height:28px; border-radius:6px; border:1px solid var(--border); background:var(--surface); cursor:pointer; font-size:13px; color:var(--red); display:flex; align-items:center; justify-content:center; transition:all 0.15s; }
+  .user-row-del:hover { background:var(--red-bg); }
+  .user-col-header { display:grid; grid-template-columns:1fr 120px 1fr 36px; gap:6px; padding:0 14px 4px; font-size:10px; font-weight:600; color:var(--text3); text-transform:uppercase; letter-spacing:0.05em; }
 </style>
 </head>
 <body>
@@ -839,10 +851,11 @@
               </div>
               <div class="form-group">
                 <label class="form-label">ประเภทงาน *</label>
-                <select class="form-select" id="f-type">
+                <select class="form-select" id="f-type" onchange="onTypeChange('f')">
                   <option value="">-- เลือกประเภท --</option>
                   <option>Implement</option>
                   <option>Add User</option>
+                  <option>Remove User</option>
                   <option>Deploy</option>
                   <option>Support</option>
                   <option>Update</option>
@@ -850,6 +863,24 @@
                   <option>Meeting</option>
                   <option>Other</option>
                 </select>
+              </div>
+              <!-- USER PANEL (แสดงเมื่อ Add/Remove User) -->
+              <div class="user-panel" id="f-user-panel">
+                <div class="user-panel-header">
+                  <span class="user-panel-title">👥 รายชื่อ User ที่ดำเนินการ</span>
+                  <div style="display:flex;align-items:center;gap:8px">
+                    <label style="font-size:12px;font-weight:600;color:var(--accent)">Group:</label>
+                    <select class="form-select" id="f-user-group" style="padding:4px 8px;font-size:12px;min-width:240px">
+                      <option value="">-- เลือก Group --</option>
+                      <option>NTL-ClaudeAI-Users</option>
+                      <option>NTL-GoogleCloudWorkspaces-Users</option>
+                      <option>NTL-CANVAEnterprise-Users</option>
+                    </select>
+                    <button class="btn" style="font-size:11px;padding:4px 10px" onclick="addUserRow('f')">+ เพิ่มแถว</button>
+                  </div>
+                </div>
+                <div class="user-col-header"><span>ชื่อ (Name)</span><span>SamAccount</span><span>Email</span><span></span></div>
+                <div class="user-rows" id="f-user-rows"></div>
               </div>
               <div class="form-group full">
                 <label class="form-label">รายละเอียดงาน *</label>
@@ -1037,11 +1068,29 @@
         </div>
         <div class="form-group">
           <label class="form-label">ประเภทงาน</label>
-          <select class="form-select" id="e-type">
-            <option>Implement</option><option>Add User</option><option>Deploy</option>
+          <select class="form-select" id="e-type" onchange="onTypeChange('e')">
+            <option>Implement</option><option>Add User</option><option>Remove User</option><option>Deploy</option>
             <option>Support</option><option>Update</option><option>Config</option>
             <option>Meeting</option><option>Other</option>
           </select>
+        </div>
+        <!-- USER PANEL EDIT -->
+        <div class="user-panel" id="e-user-panel">
+          <div class="user-panel-header">
+            <span class="user-panel-title">👥 รายชื่อ User ที่ดำเนินการ</span>
+            <div style="display:flex;align-items:center;gap:8px">
+              <label style="font-size:12px;font-weight:600;color:var(--accent)">Group:</label>
+              <select class="form-select" id="e-user-group" style="padding:4px 8px;font-size:12px;min-width:240px">
+                <option value="">-- เลือก Group --</option>
+                <option>NTL-ClaudeAI-Users</option>
+                <option>NTL-GoogleCloudWorkspaces-Users</option>
+                <option>NTL-CANVAEnterprise-Users</option>
+              </select>
+              <button class="btn" style="font-size:11px;padding:4px 10px" onclick="addUserRow('e')">+ เพิ่มแถว</button>
+            </div>
+          </div>
+          <div class="user-col-header"><span>ชื่อ (Name)</span><span>SamAccount</span><span>Email</span><span></span></div>
+          <div class="user-rows" id="e-user-rows"></div>
         </div>
         <div class="form-group full">
           <label class="form-label">รายละเอียดงาน</label>
@@ -1635,6 +1684,9 @@ function clearForm() {
     const el = document.getElementById('f-'+f);
     if (el) el.value = '';
   });
+  document.getElementById('f-user-panel').classList.remove('visible');
+  document.getElementById('f-user-rows').innerHTML = '';
+  document.getElementById('f-user-group').value = '';
 }
 
 function saveTask() {
@@ -1649,10 +1701,13 @@ function saveTask() {
     type, desc, team: document.getElementById('f-team').value.trim(), status,
     start: document.getElementById('f-start').value, due: document.getElementById('f-due').value,
     finish: document.getElementById('f-finish').value, issue: document.getElementById('f-issue').value.trim(),
-    fix: document.getElementById('f-fix').value.trim(), result: document.getElementById('f-result').value.trim()
+    fix: document.getElementById('f-fix').value.trim(), result: document.getElementById('f-result').value.trim(),
+    userGroup: document.getElementById('f-user-group').value,
+    userRows: (type === 'Add User' || type === 'Remove User') ? getUserRows('f') : []
   };
   tasks.push(task);
   saveData();
+  autoSyncUserLogs(task);
   showToast('✅ บันทึกงานเรียบร้อยแล้ว');
   clearForm();
   setToday();
@@ -1712,6 +1767,10 @@ function openEdit(id) {
   document.getElementById('e-issue').value = t.issue || '';
   document.getElementById('e-fix').value = t.fix || '';
   document.getElementById('e-result').value = t.result || '';
+  // user panel
+  const isUserType = t.type === 'Add User' || t.type === 'Remove User';
+  document.getElementById('e-user-panel').classList.toggle('visible', isUserType);
+  if (isUserType) setUserRows('e', t.userRows || [], t.userGroup || '');
   openModal('edit-modal');
 }
 
@@ -1731,7 +1790,12 @@ function updateTask() {
   t.issue = document.getElementById('e-issue').value.trim();
   t.fix = document.getElementById('e-fix').value.trim();
   t.result = document.getElementById('e-result').value.trim();
+  t.userGroup = document.getElementById('e-user-group').value;
+  t.userRows = (t.type === 'Add User' || t.type === 'Remove User') ? getUserRows('e') : [];
   saveData();
+  // ลบ UserLogs เก่าของ task นี้แล้วสร้างใหม่
+  userLogs = userLogs.filter(l => l.taskId !== t.id);
+  autoSyncUserLogs(t);
   closeModal('edit-modal');
   renderTasks();
   updateProjectFilter();
@@ -2054,6 +2118,102 @@ function switchUMTab(tabId, btn) {
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   document.getElementById(tabId).classList.add('active');
   if (btn) btn.classList.add('active');
+}
+
+// ===== USER PANEL IN TASK FORM =====
+const GROUP_LIST = ['NTL-ClaudeAI-Users', 'NTL-GoogleCloudWorkspaces-Users', 'NTL-CANVAEnterprise-Users'];
+
+function onTypeChange(prefix) {
+  const type = document.getElementById(prefix + '-type').value;
+  const panel = document.getElementById(prefix + '-user-panel');
+  const isUserType = type === 'Add User' || type === 'Remove User';
+  panel.classList.toggle('visible', isUserType);
+  if (isUserType && document.getElementById(prefix + '-user-rows').children.length === 0) {
+    addUserRow(prefix); // เพิ่มแถวแรกอัตโนมัติ
+  }
+}
+
+function addUserRow(prefix) {
+  const rows = document.getElementById(prefix + '-user-rows');
+  const idx = Date.now();
+  const div = document.createElement('div');
+  div.className = 'user-row';
+  div.id = `ur-${prefix}-${idx}`;
+  div.innerHTML = `
+    <input type="text" placeholder="ชื่อ-นามสกุล" class="ur-name">
+    <input type="text" placeholder="SamAccount" class="ur-sam">
+    <input type="text" placeholder="email@tidlor.com" class="ur-email">
+    <button class="user-row-del" onclick="removeUserRow('${prefix}','ur-${prefix}-${idx}')">✕</button>
+  `;
+  rows.appendChild(div);
+}
+
+function removeUserRow(prefix, rowId) {
+  const el = document.getElementById(rowId);
+  if (el) el.remove();
+}
+
+function getUserRows(prefix) {
+  const rows = document.getElementById(prefix + '-user-rows');
+  const group = document.getElementById(prefix + '-user-group').value;
+  const type = document.getElementById(prefix + '-type').value;
+  const action = type === 'Add User' ? 'Add' : 'Remove';
+  const users = [];
+  rows.querySelectorAll('.user-row').forEach(row => {
+    const name = row.querySelector('.ur-name').value.trim();
+    const sam = row.querySelector('.ur-sam').value.trim();
+    const email = row.querySelector('.ur-email').value.trim();
+    if (name || sam) users.push({ name, sam, email, group, action });
+  });
+  return users;
+}
+
+function setUserRows(prefix, users, group) {
+  const rowsEl = document.getElementById(prefix + '-user-rows');
+  rowsEl.innerHTML = '';
+  if (group) document.getElementById(prefix + '-user-group').value = group;
+  if (!users || !users.length) { addUserRow(prefix); return; }
+  users.forEach(u => {
+    const idx = Date.now() + Math.random();
+    const div = document.createElement('div');
+    div.className = 'user-row';
+    div.id = `ur-${prefix}-${idx}`;
+    div.innerHTML = `
+      <input type="text" placeholder="ชื่อ-นามสกุล" class="ur-name" value="${u.name||''}">
+      <input type="text" placeholder="SamAccount" class="ur-sam" value="${u.sam||''}">
+      <input type="text" placeholder="email@tidlor.com" class="ur-email" value="${u.email||''}">
+      <button class="user-row-del" onclick="removeUserRow('${prefix}','ur-${prefix}-${idx}')">✕</button>
+    `;
+    rowsEl.appendChild(div);
+  });
+}
+
+// บันทึก User Log อัตโนมัติจาก task
+function autoSyncUserLogs(task) {
+  if (task.type !== 'Add User' && task.type !== 'Remove User') return;
+  if (!task.userRows || !task.userRows.length) return;
+  const action = task.type === 'Add User' ? 'Add' : 'Remove';
+  task.userRows.forEach(u => {
+    if (!u.name && !u.sam) return;
+    // ตรวจว่ามีแล้วหรือยัง (ป้องกัน duplicate จาก taskId+sam)
+    const exists = userLogs.find(l => l.taskId === task.id && l.sam === u.sam && l.name === u.name);
+    if (!exists) {
+      userLogs.push({
+        id: nextUlId++,
+        taskId: task.id,
+        date: task.date,
+        action,
+        name: u.name,
+        sam: u.sam,
+        email: u.email,
+        group: u.group || task.userGroup || '',
+        ticket: task.ticket || '',
+        note: '',
+        adStatus: null
+      });
+    }
+  });
+  saveUserLogs();
 }
 
 // ===== INIT =====
