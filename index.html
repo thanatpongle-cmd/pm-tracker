@@ -543,9 +543,98 @@
   .detail-val { font-size: 13px; color: var(--text); }
   .detail-section { border-top: 1px solid var(--border); padding-top: 14px; margin-top: 14px; }
   .detail-section-title { font-size: 12px; font-weight: 600; color: var(--text3); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 10px; }
+  /* LOGIN SCREEN */
+  .login-screen {
+    position: fixed;
+    inset: 0;
+    background: var(--bg);
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+  }
+  .login-screen.hidden { display: none; }
+  .login-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 48px 52px;
+    text-align: center;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+    max-width: 420px;
+    width: 90%;
+  }
+  .login-logo {
+    font-size: 28px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 4px;
+    letter-spacing: -0.02em;
+  }
+  .login-sub {
+    font-size: 13px;
+    color: var(--text3);
+    margin-bottom: 36px;
+  }
+  .login-icon {
+    font-size: 52px;
+    margin-bottom: 20px;
+  }
+  .login-desc {
+    font-size: 13px;
+    color: var(--text2);
+    line-height: 1.7;
+    margin-bottom: 32px;
+  }
+  .btn-google-login {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 12px 28px;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: var(--radius);
+    font-size: 14px;
+    font-family: var(--font);
+    font-weight: 500;
+    cursor: pointer;
+    width: 100%;
+    transition: background 0.15s;
+  }
+  .btn-google-login:hover { background: #153d75; }
+  .btn-google-login img { width: 18px; height: 18px; filter: brightness(0) invert(1); }
+  .login-footer {
+    margin-top: 20px;
+    font-size: 11px;
+    color: var(--text3);
+    line-height: 1.6;
+  }
 </style>
 </head>
 <body>
+
+<div class="login-screen" id="login-screen">
+  <div class="login-card">
+    <div class="login-icon">📋</div>
+    <div class="login-logo">PM Tracker</div>
+    <div class="login-sub">Task Management Dashboard</div>
+    <div class="login-desc">
+      ข้อมูลงานของคุณถูกเก็บอย่างปลอดภัยใน Google Drive<br>
+      กรุณาเชื่อมต่อ Google Drive เพื่อเข้าถึงข้อมูล
+    </div>
+    <button class="btn-google-login" onclick="gdriveLogin()">
+      <img src="https://www.google.com/favicon.ico" alt="Google">
+      เชื่อมต่อด้วย Google Drive
+    </button>
+    <div class="login-footer">
+      🔒 ข้อมูลของคุณปลอดภัย · เข้าถึงได้เฉพาะบัญชีของคุณเท่านั้น<br>
+      ไม่มีการแชร์ข้อมูลกับบุคคลอื่น
+    </div>
+  </div>
+</div>
 
 <div class="layout">
   <!-- SIDEBAR -->
@@ -951,14 +1040,17 @@ function setSyncState(state, label) {
   const btnSync = document.getElementById('btn-gdrive-sync');
   const btnLogout = document.getElementById('btn-gdrive-logout');
   const footer = document.getElementById('sidebar-footer');
+  const loginScreen = document.getElementById('login-screen');
   dot.className = 'sync-dot' + (state !== 'disconnected' ? ' ' + state : '');
   lbl.textContent = label;
   if (state === 'disconnected') {
     btnLogin.style.display = ''; btnSync.style.display = 'none'; btnLogout.style.display = 'none';
     footer.textContent = 'v1.1 · Local Storage';
+    loginScreen.classList.remove('hidden'); // แสดงหน้า login
   } else {
     btnLogin.style.display = 'none'; btnSync.style.display = ''; btnLogout.style.display = '';
     footer.textContent = 'v1.1 · Google Drive';
+    loginScreen.classList.add('hidden'); // ซ่อนหน้า login
   }
 }
 
@@ -983,8 +1075,10 @@ function gdriveLogout() {
   accessToken = null; driveFileId = null;
   localStorage.removeItem('gdrive_token');
   localStorage.removeItem('gdrive_file_id');
+  // ล้างข้อมูลออกจากหน้าจอ
+  tasks = [];
   setSyncState('disconnected', 'ยังไม่ได้เชื่อมต่อ Google Drive');
-  showToast('ออกจาก Google Drive แล้ว ข้อมูลยังอยู่ใน Local Storage ครับ');
+  showToast('ออกจาก Google Drive แล้ว');
 }
 
 // ===== DRIVE FILE OPERATIONS =====
@@ -1092,12 +1186,10 @@ function saveLocal() {
 }
 
 function loadData() {
-  try {
-    const saved = localStorage.getItem('pm_tasks');
-    const savedId = localStorage.getItem('pm_nextId');
-    if (saved) { tasks = JSON.parse(saved); nextId = savedId ? parseInt(savedId) : 100; }
-    else { tasks = INITIAL_DATA.map(t => ({...t})); nextId = 100; saveLocal(); }
-  } catch(e) { tasks = INITIAL_DATA.map(t => ({...t})); }
+  // ไม่โหลดข้อมูลจาก localStorage อีกต่อไป
+  // ข้อมูลจะโหลดจาก Google Drive เท่านั้น
+  tasks = [];
+  nextId = 100;
 }
 
 function saveData() {
