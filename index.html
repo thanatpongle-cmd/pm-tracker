@@ -612,6 +612,40 @@
     color: var(--text3);
     line-height: 1.6;
   }
+  /* USER MANAGEMENT */
+  .um-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+  .um-layout.full { grid-template-columns: 1fr; }
+  .um-section { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; box-shadow: var(--shadow); }
+  .um-section-header { padding: 12px 18px; background: var(--surface2); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+  .um-section-title { font-size: 13px; font-weight: 600; color: var(--text); }
+  .um-section-sub { font-size: 11px; color: var(--text3); }
+  .um-table { width: 100%; border-collapse: collapse; }
+  .um-table th { padding: 8px 14px; text-align: left; font-size: 11px; font-weight: 600; color: var(--text3); text-transform: uppercase; letter-spacing: 0.05em; background: var(--surface2); border-bottom: 1px solid var(--border); white-space: nowrap; }
+  .um-table td { padding: 8px 14px; font-size: 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  .um-table tr:last-child td { border-bottom: none; }
+  .um-table tr:hover td { background: var(--surface2); }
+  .match-ok { color: var(--green); font-weight: 500; }
+  .match-warn { color: var(--amber); font-weight: 500; }
+  .match-err { color: var(--red); font-weight: 500; }
+  .match-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 100px; font-size: 11px; font-weight: 500; }
+  .match-badge.ok { background: var(--green-bg); color: var(--green); }
+  .match-badge.warn { background: var(--amber-bg); color: var(--amber); }
+  .match-badge.err { background: var(--red-bg); color: var(--red); }
+  .match-badge.info { background: var(--accent-light); color: var(--accent); }
+  .um-stat-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 10px; margin-bottom: 16px; }
+  .um-stat { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 14px 16px; box-shadow: var(--shadow); }
+  .um-stat-label { font-size: 11px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+  .um-stat-val { font-size: 22px; font-weight: 600; }
+  .um-drop { border: 2px dashed var(--border2); border-radius: var(--radius-lg); padding: 28px; text-align: center; color: var(--text3); font-size: 13px; background: var(--surface2); cursor: pointer; transition: all 0.15s; }
+  .um-drop:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
+  .um-drop-icon { font-size: 32px; margin-bottom: 8px; }
+  .tab-bar { display: flex; gap: 2px; padding: 0 18px; border-bottom: 1px solid var(--border); background: var(--surface2); }
+  .tab-btn { padding: 10px 16px; font-size: 12px; font-weight: 500; color: var(--text2); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; transition: all 0.15s; font-family: var(--font); background: none; border-top: none; border-left: none; border-right: none; }
+  .tab-btn:hover { color: var(--text); }
+  .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab-content { display: none; padding: 16px; max-height: 420px; overflow-y: auto; }
+  .tab-content.active { display: block; }
+  .ou-tag { display: inline-block; background: var(--surface2); border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px; font-size: 10px; color: var(--text2); }
 </style>
 </head>
 <body>
@@ -652,6 +686,9 @@
       </div>
       <div class="nav-item" onclick="switchView('add', this)">
         <span class="nav-icon">➕</span> เพิ่มงานใหม่
+      </div>
+      <div class="nav-item" onclick="switchView('users', this)">
+        <span class="nav-icon">👥</span> User Management
       </div>
     </div>
     <div class="sidebar-footer" id="sidebar-footer">
@@ -865,11 +902,101 @@
             </div>
           </div>
         </div>
+      <!-- USER MANAGEMENT VIEW -->
+      <div class="view" id="view-users">
+
+        <div class="um-stat-grid">
+          <div class="um-stat"><div class="um-stat-label">User Log ทั้งหมด</div><div class="um-stat-val" id="um-s1">0</div></div>
+          <div class="um-stat"><div class="um-stat-label">ตรงกับ AD</div><div class="um-stat-val match-ok" id="um-s2">-</div></div>
+          <div class="um-stat"><div class="um-stat-label">ไม่พบใน AD</div><div class="um-stat-val match-err" id="um-s3">-</div></div>
+          <div class="um-stat"><div class="um-stat-label">AD เกิน Log</div><div class="um-stat-val match-warn" id="um-s4">-</div></div>
+        </div>
+
+        <div class="um-layout">
+          <div class="um-section">
+            <div class="um-section-header"><div class="um-section-title">➕ บันทึก User Log</div></div>
+            <div style="padding:16px">
+              <div class="form-grid" style="grid-template-columns:1fr 1fr;gap:10px">
+                <div class="form-group"><label class="form-label">วันที่ *</label><input type="date" class="form-input" id="ul-date"></div>
+                <div class="form-group"><label class="form-label">Action *</label>
+                  <select class="form-select" id="ul-action"><option value="">-- เลือก --</option><option value="Add">เพิ่ม User</option><option value="Remove">ลบ User</option></select>
+                </div>
+                <div class="form-group full"><label class="form-label">ชื่อ User (Name) *</label><input type="text" class="form-input" id="ul-name" placeholder="เช่น Thanatpong Lertkornsirawong"></div>
+                <div class="form-group"><label class="form-label">SamAccountName</label><input type="text" class="form-input" id="ul-sam" placeholder="เช่น 80013801"></div>
+                <div class="form-group"><label class="form-label">Email</label><input type="text" class="form-input" id="ul-email" placeholder="name@tidlor.com"></div>
+                <div class="form-group full"><label class="form-label">Group *</label>
+                  <input type="text" class="form-input" id="ul-group" placeholder="เช่น NTL-ClaudeAI-Users" list="group-list">
+                  <datalist id="group-list"></datalist>
+                </div>
+                <div class="form-group"><label class="form-label">อ้างอิง Ticket</label><input type="text" class="form-input" id="ul-ticket" placeholder="เช่น S26015051"></div>
+                <div class="form-group"><label class="form-label">หมายเหตุ</label><input type="text" class="form-input" id="ul-note" placeholder="หมายเหตุ"></div>
+              </div>
+              <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
+                <button class="btn" onclick="clearUserLog()">ล้าง</button>
+                <button class="btn btn-primary" onclick="saveUserLog()">💾 บันทึก</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="um-section">
+            <div class="um-section-header">
+              <div class="um-section-title">📂 Import AD CSV เพื่อตรวจสอบ</div>
+              <span class="um-section-sub" id="ad-import-info">ยังไม่ได้ Import</span>
+            </div>
+            <div style="padding:16px">
+              <div class="um-drop" onclick="document.getElementById('ad-csv-input').click()">
+                <div class="um-drop-icon">📋</div>
+                <div>คลิกเพื่อเลือกไฟล์ AD CSV</div>
+                <div style="font-size:11px;margin-top:4px">รองรับไฟล์จาก Get-ADGroupMember · Name, SamAccountName, Mail, SourceGroup</div>
+              </div>
+              <input type="file" id="ad-csv-input" accept=".csv" style="display:none" onchange="importADCSV(event)">
+              <div id="ad-preview" style="margin-top:12px;display:none">
+                <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:8px" id="ad-preview-label"></div>
+                <div style="overflow-x:auto;max-height:160px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius)">
+                  <table class="um-table" id="ad-preview-table"></table>
+                </div>
+                <div style="display:flex;gap:8px;margin-top:10px">
+                  <button class="btn btn-primary" style="flex:1" onclick="runCompare()">🔍 เปรียบเทียบกับ Log</button>
+                  <button class="btn" onclick="clearAD()">ล้าง AD</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="um-section">
+          <div class="um-section-header">
+            <div class="um-section-title">📊 ผลการตรวจสอบ</div>
+            <span class="um-section-sub" id="compare-info">Import AD CSV แล้วกด "เปรียบเทียบ"</span>
+          </div>
+          <div class="tab-bar">
+            <button class="tab-btn active" onclick="switchUMTab('tab-log',this)">📋 User Log ทั้งหมด</button>
+            <button class="tab-btn" onclick="switchUMTab('tab-match',this)">✅ ตรงกับ AD</button>
+            <button class="tab-btn" onclick="switchUMTab('tab-missing',this)">❌ ไม่พบใน AD</button>
+            <button class="tab-btn" onclick="switchUMTab('tab-extra',this)">⚠️ AD เกิน Log</button>
+          </div>
+          <div class="tab-content active" id="tab-log">
+            <table class="um-table" style="width:100%"><thead><tr>
+              <th>วันที่</th><th>Action</th><th>ชื่อ</th><th>SamAccount</th><th>Email</th><th>Group</th><th>Ticket</th><th>สถานะ AD</th><th style="text-align:center">จัดการ</th>
+            </tr></thead><tbody id="ul-body"></tbody></table>
+          </div>
+          <div class="tab-content" id="tab-match">
+            <table class="um-table" style="width:100%"><thead><tr><th>ชื่อ</th><th>SamAccount</th><th>Email</th><th>Group</th><th>Ticket</th><th>วันที่บันทึก</th></tr></thead><tbody id="match-body"></tbody></table>
+          </div>
+          <div class="tab-content" id="tab-missing">
+            <div style="padding:8px 0;font-size:12px;color:var(--red);margin-bottom:8px">⚠️ User เหล่านี้บันทึกว่า Add แต่ไม่พบใน AD CSV</div>
+            <table class="um-table" style="width:100%"><thead><tr><th>ชื่อ</th><th>SamAccount</th><th>Group</th><th>Ticket</th><th>วันที่บันทึก</th></tr></thead><tbody id="missing-body"></tbody></table>
+          </div>
+          <div class="tab-content" id="tab-extra">
+            <div style="padding:8px 0;font-size:12px;color:var(--amber);margin-bottom:8px">⚠️ User เหล่านี้อยู่ใน AD แต่ไม่มีบันทึกใน Log</div>
+            <table class="um-table" style="width:100%"><thead><tr><th>ชื่อ</th><th>SamAccount</th><th>Email</th><th>Group</th><th>Department</th></tr></thead><tbody id="extra-body"></tbody></table>
+          </div>
+        </div>
       </div>
 
-    </div>
-  </div>
-</div>
+    </div><!-- end content -->
+  </div><!-- end main -->
+</div><!-- end layout -->
 
 <!-- DETAIL MODAL -->
 <div class="modal-overlay" id="detail-modal">
@@ -1117,6 +1244,7 @@ async function loadFromDrive() {
       if (data.tasks) {
         tasks = data.tasks;
         nextId = data.nextId || 100;
+        if (data.userLogs) { userLogs = data.userLogs; nextUlId = data.nextUlId || 1; }
         saveLocal();
         renderDashboard();
         updateProjectFilter();
@@ -1137,7 +1265,7 @@ async function saveToDrive() {
   if (!accessToken) return;
   try {
     setSyncState('syncing', 'กำลัง Sync ขึ้น Google Drive...');
-    const content = JSON.stringify({ tasks, nextId, savedAt: new Date().toISOString() });
+    const content = JSON.stringify({ tasks, nextId, userLogs, nextUlId, savedAt: new Date().toISOString() });
     const blob = new Blob([content], { type: 'application/json' });
     let res;
     if (driveFileId) {
@@ -1219,11 +1347,12 @@ function switchView(view, el) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('view-' + view).classList.add('active');
   if (el) el.classList.add('active');
-  const titles = {dashboard:'Dashboard', tasks:'รายการงาน', add:'เพิ่มงานใหม่'};
+  const titles = {dashboard:'Dashboard', tasks:'รายการงาน', add:'เพิ่มงานใหม่', users:'User Management'};
   document.getElementById('topbar-title').textContent = titles[view] || '';
   if (view === 'dashboard') renderDashboard();
   if (view === 'tasks') { currentPage = 1; renderTasks(); updateProjectFilter(); }
   if (view === 'add') { clearForm(); setToday(); }
+  if (view === 'users') { renderUserLog(); updateGroupDatalist(); }
 }
 
 function setToday() {
@@ -1682,8 +1811,254 @@ function handleImport(e) {
   reader.readAsText(file, 'UTF-8');
 }
 
+// ===== USER MANAGEMENT =====
+let userLogs = [];   // { id, date, action, name, sam, email, group, ticket, note }
+let adData = [];     // parsed AD CSV rows
+let nextUlId = 1;
+
+function saveUserLogs() {
+  localStorage.setItem('pm_userlogs', JSON.stringify(userLogs));
+  localStorage.setItem('pm_ul_nextid', nextUlId);
+  if (accessToken) {
+    pendingSave = true;
+    if (window._saveDebounce) clearTimeout(window._saveDebounce);
+    window._saveDebounce = setTimeout(() => saveToDrive(), 3000);
+  }
+}
+
+function loadUserLogs() {
+  try {
+    const s = localStorage.getItem('pm_userlogs');
+    const n = localStorage.getItem('pm_ul_nextid');
+    if (s) { userLogs = JSON.parse(s); nextUlId = n ? parseInt(n) : 1; }
+  } catch(e) { userLogs = []; }
+}
+
+// ดึง group list จาก userLogs + tasks
+function getAllGroups() {
+  const fromLogs = userLogs.map(u => u.group);
+  const fromTasks = tasks.filter(t => t.type === 'Add User' && t.desc).map(t => {
+    const m = t.desc.match(/NTL-[\w-]+/);
+    return m ? m[0] : null;
+  }).filter(Boolean);
+  return [...new Set([...fromLogs, ...fromTasks].filter(Boolean))].sort();
+}
+
+function updateGroupDatalist() {
+  const dl = document.getElementById('group-list');
+  if (!dl) return;
+  dl.innerHTML = getAllGroups().map(g => `<option value="${g}">`).join('');
+}
+
+function saveUserLog() {
+  const date = document.getElementById('ul-date').value;
+  const action = document.getElementById('ul-action').value;
+  const name = document.getElementById('ul-name').value.trim();
+  const group = document.getElementById('ul-group').value.trim();
+  if (!date || !action || !name || !group) { showToast('⚠️ กรุณากรอก วันที่ Action ชื่อ และ Group'); return; }
+  userLogs.push({
+    id: nextUlId++,
+    date, action, name,
+    sam: document.getElementById('ul-sam').value.trim(),
+    email: document.getElementById('ul-email').value.trim(),
+    group,
+    ticket: document.getElementById('ul-ticket').value.trim(),
+    note: document.getElementById('ul-note').value.trim(),
+    adStatus: null
+  });
+  saveUserLogs();
+  clearUserLog();
+  renderUserLog();
+  showToast('✅ บันทึก User Log แล้ว');
+}
+
+function clearUserLog() {
+  ['ul-date','ul-action','ul-name','ul-sam','ul-email','ul-group','ul-ticket','ul-note'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  const today = new Date().toISOString().split('T')[0];
+  document.getElementById('ul-date').value = today;
+}
+
+function deleteUserLog(id) {
+  if (!confirm('ยืนยันลบ User Log นี้?')) return;
+  userLogs = userLogs.filter(u => u.id !== id);
+  saveUserLogs();
+  renderUserLog();
+  showToast('🗑 ลบแล้ว');
+}
+
+function renderUserLog() {
+  const tbody = document.getElementById('ul-body');
+  document.getElementById('um-s1').textContent = userLogs.length;
+  if (!userLogs.length) {
+    tbody.innerHTML = `<tr><td colspan="9"><div class="empty"><div class="empty-icon">👥</div><div class="empty-text">ยังไม่มี User Log</div></div></td></tr>`;
+    return;
+  }
+  const sorted = [...userLogs].sort((a,b) => new Date(b.date)-new Date(a.date));
+  tbody.innerHTML = sorted.map(u => {
+    const actionBadge = u.action === 'Add'
+      ? `<span class="match-badge ok">+ Add</span>`
+      : `<span class="match-badge err">- Remove</span>`;
+    let statusBadge = '<span style="color:var(--text3);font-size:11px">รอตรวจสอบ</span>';
+    if (u.adStatus === 'match') statusBadge = '<span class="match-badge ok">✓ ตรงกับ AD</span>';
+    else if (u.adStatus === 'missing') statusBadge = '<span class="match-badge err">✗ ไม่พบใน AD</span>';
+    return `<tr>
+      <td style="white-space:nowrap;color:var(--text2);font-size:11px">${formatDate(u.date)}</td>
+      <td>${actionBadge}</td>
+      <td style="font-weight:500">${u.name}</td>
+      <td><span style="font-family:var(--mono);font-size:11px">${u.sam||'-'}</span></td>
+      <td style="font-size:11px;color:var(--text2)">${u.email||'-'}</td>
+      <td><span class="ou-tag">${u.group}</span></td>
+      <td>${u.ticket ? ticketBadge(u.ticket) : '-'}</td>
+      <td>${statusBadge}</td>
+      <td style="text-align:center"><button class="action-btn del" onclick="deleteUserLog(${u.id})" title="ลบ">🗑</button></td>
+    </tr>`;
+  }).join('');
+}
+
+// ===== AD CSV IMPORT =====
+function importADCSV(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const text = ev.target.result.replace(/^\ufeff/, '');
+    const lines = text.split('\n').filter(l => l.trim());
+    const headers = lines[0].split(',').map(h => h.replace(/"/g,'').trim());
+    adData = lines.slice(1).map(line => {
+      const cols = line.match(/(".*?"|[^,]+|(?<=,)(?=,)|(?<=,)$|^(?=,))/g) || [];
+      const clean = cols.map(c => c.replace(/^"|"$/g,'').trim());
+      const row = {};
+      headers.forEach((h,i) => row[h] = clean[i] || '');
+      // แยก OU จาก DistinguishedName
+      const dn = row['DistinguishedName'] || '';
+      const ouMatch = dn.match(/OU=DEPT-([^,]+)/);
+      row['_dept'] = ouMatch ? ouMatch[1] : '-';
+      return row;
+    }).filter(r => r['Name'] || r['SamAccountName']);
+
+    document.getElementById('ad-import-info').textContent = `${adData.length} records · ${file.name}`;
+    document.getElementById('ad-preview-label').textContent = `ตัวอย่างข้อมูล (5 แถวแรก จากทั้งหมด ${adData.length})`;
+    document.getElementById('ad-preview').style.display = '';
+
+    const preview = adData.slice(0,5);
+    document.getElementById('ad-preview-table').innerHTML = `
+      <thead><tr><th>Name</th><th>SamAccount</th><th>Email</th><th>Group</th><th>Dept</th></tr></thead>
+      <tbody>${preview.map(r => `<tr>
+        <td>${r['Name']||'-'}</td>
+        <td style="font-family:var(--mono);font-size:11px">${r['SamAccountName']||'-'}</td>
+        <td style="font-size:11px">${r['Mail']||'-'}</td>
+        <td><span class="ou-tag">${r['SourceGroup']||'-'}</span></td>
+        <td style="font-size:11px">${r['_dept']||'-'}</td>
+      </tr>`).join('')}</tbody>`;
+    showToast(`✅ Import AD สำเร็จ ${adData.length} records`);
+    e.target.value = '';
+  };
+  reader.readAsText(file, 'UTF-8');
+}
+
+function clearAD() {
+  adData = [];
+  document.getElementById('ad-preview').style.display = 'none';
+  document.getElementById('ad-import-info').textContent = 'ยังไม่ได้ Import';
+  document.getElementById('compare-info').textContent = 'Import AD CSV แล้วกด "เปรียบเทียบ"';
+  document.getElementById('um-s2').textContent = '-';
+  document.getElementById('um-s3').textContent = '-';
+  document.getElementById('um-s4').textContent = '-';
+  userLogs.forEach(u => u.adStatus = null);
+  saveUserLogs(); renderUserLog();
+}
+
+// ===== COMPARE =====
+function runCompare() {
+  if (!adData.length) { showToast('⚠️ กรุณา Import AD CSV ก่อนครับ'); return; }
+
+  // สร้าง lookup set จาก AD: key = sam+group (lowercase)
+  const adSet = new Set(adData.map(r =>
+    (r['SamAccountName']||'').toLowerCase() + '|' + (r['SourceGroup']||'').toLowerCase()
+  ));
+  const adBySam = {};
+  adData.forEach(r => { adBySam[(r['SamAccountName']||'').toLowerCase()] = r; });
+
+  // อัปเดต adStatus ของ userLogs
+  const addLogs = userLogs.filter(u => u.action === 'Add');
+  addLogs.forEach(u => {
+    const key = (u.sam||'').toLowerCase() + '|' + (u.group||'').toLowerCase();
+    const samKey = (u.sam||'').toLowerCase();
+    if (u.sam && adSet.has(key)) u.adStatus = 'match';
+    else if (u.sam && adBySam[samKey]) u.adStatus = 'missing'; // มีใน AD แต่ต่าง group
+    else u.adStatus = 'missing';
+  });
+  saveUserLogs();
+
+  const matched = addLogs.filter(u => u.adStatus === 'match');
+  const missing = addLogs.filter(u => u.adStatus === 'missing');
+
+  // หา AD extra: อยู่ใน AD แต่ไม่มีใน log Add
+  const logKeys = new Set(addLogs.map(u =>
+    (u.sam||'').toLowerCase() + '|' + (u.group||'').toLowerCase()
+  ));
+  const extra = adData.filter(r =>
+    !logKeys.has((r['SamAccountName']||'').toLowerCase() + '|' + (r['SourceGroup']||'').toLowerCase())
+  );
+
+  // อัปเดต stats
+  document.getElementById('um-s2').textContent = matched.length;
+  document.getElementById('um-s3').textContent = missing.length;
+  document.getElementById('um-s4').textContent = extra.length;
+  document.getElementById('compare-info').textContent =
+    `ตรวจสอบ ${addLogs.length} logs · AD ${adData.length} records · อัปเดตแล้ว`;
+
+  // render matched
+  document.getElementById('match-body').innerHTML = matched.length
+    ? matched.map(u => `<tr>
+        <td style="font-weight:500">${u.name}</td>
+        <td style="font-family:var(--mono);font-size:11px">${u.sam||'-'}</td>
+        <td style="font-size:11px">${u.email||'-'}</td>
+        <td><span class="ou-tag">${u.group}</span></td>
+        <td>${u.ticket ? ticketBadge(u.ticket) : '-'}</td>
+        <td style="color:var(--text2);font-size:11px">${formatDate(u.date)}</td>
+      </tr>`).join('')
+    : `<tr><td colspan="6" style="text-align:center;color:var(--text3);padding:24px">ไม่มีข้อมูลที่ตรงกัน</td></tr>`;
+
+  // render missing
+  document.getElementById('missing-body').innerHTML = missing.length
+    ? missing.map(u => `<tr>
+        <td style="font-weight:500;color:var(--red)">${u.name}</td>
+        <td style="font-family:var(--mono);font-size:11px">${u.sam||'-'}</td>
+        <td><span class="ou-tag">${u.group}</span></td>
+        <td>${u.ticket ? ticketBadge(u.ticket) : '-'}</td>
+        <td style="color:var(--text2);font-size:11px">${formatDate(u.date)}</td>
+      </tr>`).join('')
+    : `<tr><td colspan="5" style="text-align:center;color:var(--text3);padding:24px">✅ ไม่มี User ที่หายไปจาก AD</td></tr>`;
+
+  // render extra
+  document.getElementById('extra-body').innerHTML = extra.length
+    ? extra.map(r => `<tr>
+        <td style="font-weight:500">${r['Name']||'-'}</td>
+        <td style="font-family:var(--mono);font-size:11px">${r['SamAccountName']||'-'}</td>
+        <td style="font-size:11px">${r['Mail']||'-'}</td>
+        <td><span class="ou-tag">${r['SourceGroup']||'-'}</span></td>
+        <td style="font-size:11px;color:var(--text2)">${r['_dept']||'-'}</td>
+      </tr>`).join('')
+    : `<tr><td colspan="5" style="text-align:center;color:var(--text3);padding:24px">✅ ทุก User ใน AD มีบันทึกใน Log ครบ</td></tr>`;
+
+  renderUserLog();
+  showToast(`🔍 เปรียบเทียบเสร็จ: ตรง ${matched.length} · ไม่พบ ${missing.length} · AD เกิน ${extra.length}`);
+}
+
+function switchUMTab(tabId, btn) {
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById(tabId).classList.add('active');
+  if (btn) btn.classList.add('active');
+}
+
 // ===== INIT =====
 loadData();
+loadUserLogs();
 renderDashboard();
 updateProjectFilter();
 // ล้าง token เก่าและแสดงหน้า login ทุกครั้งที่เปิด
