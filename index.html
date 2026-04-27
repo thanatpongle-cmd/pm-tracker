@@ -971,25 +971,34 @@
 
           <div class="um-section">
             <div class="um-section-header">
-              <div class="um-section-title">📂 Import AD CSV เพื่อตรวจสอบ</div>
+              <div class="um-section-title">📂 ข้อมูล AD ตั้งต้น</div>
               <span class="um-section-sub" id="ad-import-info">ยังไม่ได้ Import</span>
             </div>
             <div style="padding:16px">
-              <div class="um-drop" onclick="document.getElementById('ad-csv-input').click()">
+              <div id="ad-base-loaded" style="display:none;margin-bottom:12px">
+                <div style="background:var(--green-bg);border:1px solid #b8ddb8;border-radius:var(--radius);padding:10px 14px;font-size:12px;color:var(--green);display:flex;align-items:center;justify-content:space-between">
+                  <span>✓ โหลดข้อมูลตั้งต้นจาก Google Drive แล้ว</span>
+                  <span id="ad-base-count" style="font-weight:600"></span>
+                </div>
+              </div>
+              <div class="um-drop" onclick="document.getElementById('ad-csv-input').click()" id="ad-drop-zone">
                 <div class="um-drop-icon">📋</div>
-                <div>คลิกเพื่อเลือกไฟล์ AD CSV</div>
-                <div style="font-size:11px;margin-top:4px">รองรับไฟล์จาก Get-ADGroupMember · Name, SamAccountName, Mail, SourceGroup</div>
+                <div id="ad-drop-label">คลิกเพื่อ Import ไฟล์ AD CSV ตั้งต้น</div>
+                <div style="font-size:11px;margin-top:4px">ข้อมูลจะบันทึกลง Google Drive ใช้ได้ถาวร</div>
               </div>
               <input type="file" id="ad-csv-input" accept=".csv" style="display:none" onchange="importADCSV(event)">
               <div id="ad-preview" style="margin-top:12px;display:none">
                 <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:8px" id="ad-preview-label"></div>
-                <div style="overflow-x:auto;max-height:160px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius)">
+                <div style="overflow-x:auto;max-height:140px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius)">
                   <table class="um-table" id="ad-preview-table"></table>
                 </div>
                 <div style="display:flex;gap:8px;margin-top:10px">
                   <button class="btn btn-primary" style="flex:1" onclick="runCompare()">🔍 เปรียบเทียบกับ Log</button>
-                  <button class="btn" onclick="clearAD()">ล้าง AD</button>
+                  <button class="btn" onclick="clearADBase()">🗑 ล้างข้อมูลตั้งต้น</button>
                 </div>
+              </div>
+              <div style="margin-top:12px">
+                <button class="btn btn-primary" style="width:100%" onclick="runCompare()">🔍 เปรียบเทียบ AD กับ Log ปัจจุบัน</button>
               </div>
             </div>
           </div>
@@ -1002,6 +1011,7 @@
           </div>
           <div class="tab-bar">
             <button class="tab-btn active" onclick="switchUMTab('tab-log',this)">📋 User Log ทั้งหมด</button>
+            <button class="tab-btn" onclick="switchUMTab('tab-current',this)">👥 สมาชิกปัจจุบัน</button>
             <button class="tab-btn" onclick="switchUMTab('tab-match',this)">✅ ตรงกับ AD</button>
             <button class="tab-btn" onclick="switchUMTab('tab-missing',this)">❌ ไม่พบใน AD</button>
             <button class="tab-btn" onclick="switchUMTab('tab-extra',this)">⚠️ AD เกิน Log</button>
@@ -1010,6 +1020,10 @@
             <table class="um-table" style="width:100%"><thead><tr>
               <th>วันที่</th><th>Action</th><th>ชื่อ</th><th>SamAccount</th><th>Email</th><th>Group</th><th>Ticket</th><th>สถานะ AD</th><th style="text-align:center">จัดการ</th>
             </tr></thead><tbody id="ul-body"></tbody></table>
+          </div>
+          <div class="tab-content" id="tab-current">
+            <div style="padding:8px 0 12px;font-size:12px;color:var(--text2)">สมาชิกปัจจุบันคำนวณจาก <strong>AD ตั้งต้น + เพิ่ม/ลบจาก Log</strong> จัดกลุ่มตาม Group</div>
+            <div id="current-members-body"></div>
           </div>
           <div class="tab-content" id="tab-match">
             <table class="um-table" style="width:100%"><thead><tr><th>ชื่อ</th><th>SamAccount</th><th>Email</th><th>Group</th><th>Ticket</th><th>วันที่บันทึก</th></tr></thead><tbody id="match-body"></tbody></table>
@@ -1294,6 +1308,7 @@ async function loadFromDrive() {
         tasks = data.tasks;
         nextId = data.nextId || 100;
         if (data.userLogs) { userLogs = data.userLogs; nextUlId = data.nextUlId || 1; }
+        if (data.adBaseData) { adBaseData = data.adBaseData; adData = [...adBaseData]; }
         saveLocal();
         renderDashboard();
         updateProjectFilter();
@@ -1314,7 +1329,7 @@ async function saveToDrive() {
   if (!accessToken) return;
   try {
     setSyncState('syncing', 'กำลัง Sync ขึ้น Google Drive...');
-    const content = JSON.stringify({ tasks, nextId, userLogs, nextUlId, savedAt: new Date().toISOString() });
+    const content = JSON.stringify({ tasks, nextId, userLogs, nextUlId, adBaseData, savedAt: new Date().toISOString() });
     const blob = new Blob([content], { type: 'application/json' });
     let res;
     if (driveFileId) {
@@ -1401,7 +1416,7 @@ function switchView(view, el) {
   if (view === 'dashboard') renderDashboard();
   if (view === 'tasks') { currentPage = 1; renderTasks(); updateProjectFilter(); }
   if (view === 'add') { clearForm(); setToday(); }
-  if (view === 'users') { renderUserLog(); updateGroupDatalist(); }
+  if (view === 'users') { renderUserLog(); updateGroupDatalist(); updateADBaseUI(); renderCurrentMembers(); }
 }
 
 function setToday() {
@@ -1877,7 +1892,8 @@ function handleImport(e) {
 
 // ===== USER MANAGEMENT =====
 let userLogs = [];   // { id, date, action, name, sam, email, group, ticket, note }
-let adData = [];     // parsed AD CSV rows
+let adBaseData = []; // ข้อมูลตั้งต้นจาก AD CSV (บันทึกลง Drive)
+let adData = [];     // AD CSV ที่ Import ชั่วคราวเพื่อเปรียบเทียบ
 let nextUlId = 1;
 
 function saveUserLogs() {
@@ -1982,62 +1998,153 @@ function renderUserLog() {
   }).join('');
 }
 
-// ===== AD CSV IMPORT =====
+// ===== AD CSV IMPORT (บันทึกเป็นข้อมูลตั้งต้นถาวร) =====
+function parseADCSV(text) {
+  const lines = text.replace(/^\ufeff/, '').split('\n').filter(l => l.trim());
+  const headers = lines[0].split(',').map(h => h.replace(/"/g,'').trim());
+  return lines.slice(1).map(line => {
+    const cols = line.match(/(".*?"|[^,]+|(?<=,)(?=,)|(?<=,)$|^(?=,))/g) || [];
+    const clean = cols.map(c => c.replace(/^"|"$/g,'').trim());
+    const row = {};
+    headers.forEach((h,i) => row[h] = clean[i] || '');
+    const dn = row['DistinguishedName'] || '';
+    const ouMatch = dn.match(/OU=DEPT-([^,]+)/);
+    row['_dept'] = ouMatch ? ouMatch[1] : '-';
+    return row;
+  }).filter(r => r['Name'] || r['SamAccountName']);
+}
+
 function importADCSV(e) {
   const file = e.target.files[0];
   if (!file) return;
   const reader = new FileReader();
   reader.onload = ev => {
-    const text = ev.target.result.replace(/^\ufeff/, '');
-    const lines = text.split('\n').filter(l => l.trim());
-    const headers = lines[0].split(',').map(h => h.replace(/"/g,'').trim());
-    adData = lines.slice(1).map(line => {
-      const cols = line.match(/(".*?"|[^,]+|(?<=,)(?=,)|(?<=,)$|^(?=,))/g) || [];
-      const clean = cols.map(c => c.replace(/^"|"$/g,'').trim());
-      const row = {};
-      headers.forEach((h,i) => row[h] = clean[i] || '');
-      // แยก OU จาก DistinguishedName
-      const dn = row['DistinguishedName'] || '';
-      const ouMatch = dn.match(/OU=DEPT-([^,]+)/);
-      row['_dept'] = ouMatch ? ouMatch[1] : '-';
-      return row;
-    }).filter(r => r['Name'] || r['SamAccountName']);
+    const parsed = parseADCSV(ev.target.result);
+    const action = adBaseData.length > 0
+      ? confirm(`มีข้อมูลตั้งต้น ${adBaseData.length} records อยู่แล้ว\n\nกด OK = แทนที่ทั้งหมด\nกด Cancel = ผสานข้อมูล`)
+      : true;
 
-    document.getElementById('ad-import-info').textContent = `${adData.length} records · ${file.name}`;
-    document.getElementById('ad-preview-label').textContent = `ตัวอย่างข้อมูล (5 แถวแรก จากทั้งหมด ${adData.length})`;
-    document.getElementById('ad-preview').style.display = '';
+    if (action) {
+      adBaseData = parsed; // แทนที่
+    } else {
+      // ผสาน: เพิ่มเฉพาะที่ยังไม่มี (เช็คจาก SamAccount+SourceGroup)
+      const existingKeys = new Set(adBaseData.map(r => r['SamAccountName']+'|'+r['SourceGroup']));
+      const newRows = parsed.filter(r => !existingKeys.has(r['SamAccountName']+'|'+r['SourceGroup']));
+      adBaseData = [...adBaseData, ...newRows];
+    }
 
-    const preview = adData.slice(0,5);
-    document.getElementById('ad-preview-table').innerHTML = `
-      <thead><tr><th>Name</th><th>SamAccount</th><th>Email</th><th>Group</th><th>Dept</th></tr></thead>
-      <tbody>${preview.map(r => `<tr>
-        <td>${r['Name']||'-'}</td>
-        <td style="font-family:var(--mono);font-size:11px">${r['SamAccountName']||'-'}</td>
-        <td style="font-size:11px">${r['Mail']||'-'}</td>
-        <td><span class="ou-tag">${r['SourceGroup']||'-'}</span></td>
-        <td style="font-size:11px">${r['_dept']||'-'}</td>
-      </tr>`).join('')}</tbody>`;
-    showToast(`✅ Import AD สำเร็จ ${adData.length} records`);
+    adData = [...adBaseData]; // sync ให้ compare ใช้ได้ทันที
+    saveData(); // บันทึกลง Drive
+    updateADBaseUI();
+    showADPreview(parsed.slice(0,5), adBaseData.length, file.name);
+    showToast(`✅ Import AD ตั้งต้น ${adBaseData.length} records · บันทึกลง Drive แล้ว`);
     e.target.value = '';
   };
   reader.readAsText(file, 'UTF-8');
 }
 
-function clearAD() {
-  adData = [];
+function updateADBaseUI() {
+  const loaded = document.getElementById('ad-base-loaded');
+  const info = document.getElementById('ad-import-info');
+  const dropLabel = document.getElementById('ad-drop-label');
+  if (adBaseData.length) {
+    loaded.style.display = '';
+    document.getElementById('ad-base-count').textContent = `${adBaseData.length} records`;
+    const groups = [...new Set(adBaseData.map(r => r['SourceGroup']).filter(Boolean))];
+    info.textContent = `${groups.length} Groups · ${adBaseData.length} Users`;
+    dropLabel.textContent = 'Import AD CSV ใหม่เพื่ออัปเดตข้อมูลตั้งต้น';
+    adData = [...adBaseData]; // sync
+  } else {
+    loaded.style.display = 'none';
+    info.textContent = 'ยังไม่ได้ Import';
+    dropLabel.textContent = 'คลิกเพื่อ Import ไฟล์ AD CSV ตั้งต้น';
+  }
+}
+
+function showADPreview(rows, total, fname) {
+  document.getElementById('ad-preview-label').textContent = `ตัวอย่างข้อมูล (5 แถวแรก จากทั้งหมด ${total}) · ${fname}`;
+  document.getElementById('ad-preview').style.display = '';
+  document.getElementById('ad-preview-table').innerHTML = `
+    <thead><tr><th>Name</th><th>SamAccount</th><th>Email</th><th>Group</th><th>Dept</th></tr></thead>
+    <tbody>${rows.map(r => `<tr>
+      <td>${r['Name']||'-'}</td>
+      <td style="font-family:var(--mono);font-size:11px">${r['SamAccountName']||'-'}</td>
+      <td style="font-size:11px">${r['Mail']||'-'}</td>
+      <td><span class="ou-tag">${r['SourceGroup']||'-'}</span></td>
+      <td style="font-size:11px">${r['_dept']||'-'}</td>
+    </tr>`).join('')}</tbody>`;
+}
+
+function clearADBase() {
+  if (!confirm('ยืนยันลบข้อมูล AD ตั้งต้นทั้งหมด?')) return;
+  adBaseData = []; adData = [];
   document.getElementById('ad-preview').style.display = 'none';
-  document.getElementById('ad-import-info').textContent = 'ยังไม่ได้ Import';
-  document.getElementById('compare-info').textContent = 'Import AD CSV แล้วกด "เปรียบเทียบ"';
+  updateADBaseUI();
   document.getElementById('um-s2').textContent = '-';
   document.getElementById('um-s3').textContent = '-';
   document.getElementById('um-s4').textContent = '-';
   userLogs.forEach(u => u.adStatus = null);
-  saveUserLogs(); renderUserLog();
+  saveData(); saveUserLogs(); renderUserLog();
+  showToast('🗑 ลบข้อมูล AD ตั้งต้นแล้ว');
+}
+
+// ===== คำนวณสมาชิกปัจจุบัน (AD Base + Log) =====
+function getCurrentMembers() {
+  // เริ่มจาก AD ตั้งต้น
+  const members = {}; // key = sam|group → record
+  adBaseData.forEach(r => {
+    const key = (r['SamAccountName']||'').toLowerCase() + '|' + (r['SourceGroup']||'').toLowerCase();
+    members[key] = { name: r['Name'], sam: r['SamAccountName'], email: r['Mail'], group: r['SourceGroup'], dept: r['_dept'], source: 'AD' };
+  });
+  // Apply logs ตามลำดับวันที่
+  const sorted = [...userLogs].sort((a,b) => new Date(a.date)-new Date(b.date));
+  sorted.forEach(u => {
+    const key = (u.sam||'').toLowerCase() + '|' + (u.group||'').toLowerCase();
+    if (u.action === 'Add') {
+      members[key] = { name: u.name, sam: u.sam, email: u.email, group: u.group, dept: '-', source: 'Log', ticket: u.ticket, date: u.date };
+    } else if (u.action === 'Remove') {
+      delete members[key];
+    }
+  });
+  return Object.values(members);
+}
+
+function renderCurrentMembers() {
+  const all = getCurrentMembers();
+  const groups = [...new Set(all.map(m => m.group).filter(Boolean))].sort();
+  const container = document.getElementById('current-members-body');
+  if (!all.length) {
+    container.innerHTML = `<div class="empty"><div class="empty-icon">👥</div><div class="empty-text">ยังไม่มีข้อมูลสมาชิก กรุณา Import AD CSV ก่อนครับ</div></div>`;
+    return;
+  }
+  container.innerHTML = groups.map(g => {
+    const gMembers = all.filter(m => m.group === g);
+    return `
+      <div style="margin-bottom:16px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+          <div style="font-size:13px;font-weight:600;color:var(--text)">${g}</div>
+          <span class="match-badge info">${gMembers.length} คน</span>
+        </div>
+        <table class="um-table" style="width:100%;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
+          <thead><tr><th>ชื่อ</th><th>SamAccount</th><th>Email</th><th>Department</th><th>ที่มา</th></tr></thead>
+          <tbody>${gMembers.map(m => `<tr>
+            <td style="font-weight:500">${m.name||'-'}</td>
+            <td style="font-family:var(--mono);font-size:11px">${m.sam||'-'}</td>
+            <td style="font-size:11px;color:var(--text2)">${m.email||'-'}</td>
+            <td style="font-size:11px">${m.dept||'-'}</td>
+            <td>${m.source==='Log'
+              ? `<span class="match-badge ok">Log ${m.ticket ? ticketBadge(m.ticket) : ''}</span>`
+              : `<span class="match-badge info">AD ตั้งต้น</span>`}</td>
+          </tr>`).join('')}</tbody>
+        </table>
+      </div>`;
+  }).join('');
 }
 
 // ===== COMPARE =====
 function runCompare() {
-  if (!adData.length) { showToast('⚠️ กรุณา Import AD CSV ก่อนครับ'); return; }
+  if (!adBaseData.length && !adData.length) { showToast('⚠️ กรุณา Import AD CSV ก่อนครับ'); return; }
+  if (!adData.length) adData = [...adBaseData];
 
   // สร้าง lookup set จาก AD: key = sam+group (lowercase)
   const adSet = new Set(adData.map(r =>
@@ -2118,6 +2225,7 @@ function switchUMTab(tabId, btn) {
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   document.getElementById(tabId).classList.add('active');
   if (btn) btn.classList.add('active');
+  if (tabId === 'tab-current') renderCurrentMembers();
 }
 
 // ===== USER PANEL IN TASK FORM =====
