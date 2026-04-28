@@ -658,6 +658,19 @@
   .user-row-del { width:28px; height:28px; border-radius:6px; border:1px solid var(--border); background:var(--surface); cursor:pointer; font-size:13px; color:var(--red); display:flex; align-items:center; justify-content:center; transition:all 0.15s; }
   .user-row-del:hover { background:var(--red-bg); }
   .user-col-header { display:grid; grid-template-columns:1fr 120px 1fr 36px; gap:6px; padding:0 14px 4px; font-size:10px; font-weight:600; color:var(--text3); text-transform:uppercase; letter-spacing:0.05em; }
+  /* MORNING BRIEFING */
+  .briefing-modal { width: 620px; }
+  .briefing-header-bar { background: linear-gradient(135deg, #1a4a8a 0%, #2d6a2d 100%); padding: 24px 28px; color: #fff; }
+  .briefing-greeting { font-size: 18px; font-weight: 600; margin-bottom: 4px; }
+  .briefing-date { font-size: 12px; opacity: 0.8; }
+  .briefing-section { padding: 16px 24px; border-bottom: 1px solid var(--border); }
+  .briefing-section:last-child { border-bottom: none; }
+  .briefing-section-title { font-size: 12px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
+  .briefing-item { display: flex; align-items: flex-start; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+  .briefing-item:last-child { border-bottom: none; }
+  .briefing-item-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-top: 4px; }
+  .briefing-empty { font-size: 12px; color: var(--text3); padding: 6px 0; font-style: italic; }
+  .briefing-meta { font-size: 11px; color: var(--text2); margin-top: 2px; }
 </style>
 </head>
 <body>
@@ -724,6 +737,7 @@
     <div class="sync-bar" id="sync-bar">
       <div class="sync-dot" id="sync-dot"></div>
       <span class="sync-label" id="sync-label">ยังไม่ได้เชื่อมต่อ Google Drive</span>
+      <span id="sync-countdown" style="font-size:11px;color:var(--text3);display:none"></span>
       <button class="btn-google" id="btn-gdrive-login" onclick="gdriveLogin()">
         <img src="https://www.google.com/favicon.ico" alt="Google"> เชื่อมต่อ Google Drive
       </button>
@@ -1154,6 +1168,24 @@
   </div>
 </div>
 
+<!-- MORNING BRIEFING MODAL -->
+<div class="modal-overlay" id="briefing-modal">
+  <div class="modal briefing-modal">
+    <div class="briefing-header-bar">
+      <div class="briefing-greeting" id="briefing-greeting">🌅 Good Morning!</div>
+      <div class="briefing-date" id="briefing-date"></div>
+    </div>
+    <div id="briefing-content"></div>
+    <div class="modal-footer">
+      <label style="font-size:12px;color:var(--text2);display:flex;align-items:center;gap:6px;cursor:pointer;flex:1">
+        <input type="checkbox" id="briefing-skip-today" style="cursor:pointer">
+        ไม่แสดงอีกวันนี้
+      </label>
+      <button class="btn btn-primary" onclick="closeBriefing()">เริ่มทำงาน 💪</button>
+    </div>
+  </div>
+</div>
+
 <!-- GROUP MODAL (คลิก Metric Card) -->
 <div class="modal-overlay" id="group-modal">
   <div class="modal">
@@ -1263,13 +1295,14 @@ function gdriveLogin() {
 function gdriveLogout() {
   if (accessToken) google.accounts.oauth2.revoke(accessToken, () => {});
   accessToken = null; driveFileId = null;
-  // ล้าง localStorage ทั้งหมด
+  if (syncTimer) clearInterval(syncTimer);
+  if (countdownTimer) clearInterval(countdownTimer);
   localStorage.removeItem('gdrive_token');
   localStorage.removeItem('gdrive_file_id');
-  // ล้าง Google session cache
   google.accounts.id.disableAutoSelect();
-  // ล้างข้อมูลออกจากหน้าจอ
   tasks = [];
+  const cd = document.getElementById('sync-countdown');
+  if (cd) cd.style.display = 'none';
   setSyncState('disconnected', 'ยังไม่ได้เชื่อมต่อ Google Drive');
   showToast('ออกจากระบบเรียบร้อยแล้ว');
 }
@@ -1294,6 +1327,7 @@ async function loadFromDrive() {
       await saveToDrive();
       setSyncState('connected', `✓ เชื่อมต่อแล้ว · ไฟล์: ${FILE_NAME}`);
       showToast('✅ สร้างไฟล์ใน Google Drive สำเร็จ');
+      setTimeout(showMorningBriefing, 800);
     } else {
       driveFileId = file.id;
       // ไม่บันทึก fileId ลง localStorage - เก็บแค่ใน memory
@@ -1317,6 +1351,8 @@ async function loadFromDrive() {
       const mod = new Date(file.modifiedTime).toLocaleString('th-TH');
       setSyncState('connected', `✓ เชื่อมต่อแล้ว · อัปเดตล่าสุด: ${mod}`);
       showToast('✅ โหลดข้อมูลจาก Google Drive สำเร็จ');
+      // แสดง Morning Briefing หลังโหลดข้อมูลเสร็จ
+      setTimeout(showMorningBriefing, 800);
     }
     startAutoSync();
   } catch(e) {
@@ -1361,11 +1397,40 @@ async function saveToDrive() {
   }
 }
 
+const AUTO_SYNC_INTERVAL = 300; // 5 นาที
+let countdownVal = AUTO_SYNC_INTERVAL;
+let countdownTimer = null;
+
 function startAutoSync() {
   if (syncTimer) clearInterval(syncTimer);
-  syncTimer = setInterval(() => {
-    if (pendingSave && accessToken) saveToDrive();
-  }, 30000); // auto sync ทุก 30 วินาที ถ้ามีการเปลี่ยนแปลง
+  if (countdownTimer) clearInterval(countdownTimer);
+
+  countdownVal = AUTO_SYNC_INTERVAL;
+
+  // Auto sync ทุก 60 วินาที ไม่ว่าจะมีการเปลี่ยนแปลงหรือเปล่า
+  syncTimer = setInterval(async () => {
+    if (accessToken) {
+      await saveToDrive();
+      countdownVal = AUTO_SYNC_INTERVAL;
+    }
+  }, AUTO_SYNC_INTERVAL * 1000);
+
+  // Countdown display ทุก 1 วินาที
+  countdownTimer = setInterval(() => {
+    if (!accessToken) return;
+    countdownVal--;
+    if (countdownVal < 0) countdownVal = AUTO_SYNC_INTERVAL;
+    const cd = document.getElementById('sync-countdown');
+    if (cd) {
+      cd.style.display = '';
+      const min = Math.floor(countdownVal / 60);
+      const sec = countdownVal % 60;
+      const timeStr = min > 0 ? `${min}:${sec.toString().padStart(2,'0')} นาที` : `${sec}s`;
+      cd.textContent = pendingSave
+        ? `⏳ มีข้อมูลรอ Sync...`
+        : `· Auto sync ใน ${timeStr}`;
+    }
+  }, 1000);
 }
 
 async function syncNow() {
@@ -1391,9 +1456,12 @@ function saveData() {
   saveLocal();
   if (accessToken) {
     pendingSave = true;
-    // debounce — save จริงหลังหยุดแก้ 3 วินาที
+    // debounce — save จริงหลังหยุดแก้ 5 วินาที
     if (window._saveDebounce) clearTimeout(window._saveDebounce);
-    window._saveDebounce = setTimeout(() => saveToDrive(), 3000);
+    window._saveDebounce = setTimeout(() => {
+      saveToDrive();
+      countdownVal = AUTO_SYNC_INTERVAL; // reset countdown หลัง save
+    }, 5000);
   }
 }
 
@@ -1902,7 +1970,10 @@ function saveUserLogs() {
   if (accessToken) {
     pendingSave = true;
     if (window._saveDebounce) clearTimeout(window._saveDebounce);
-    window._saveDebounce = setTimeout(() => saveToDrive(), 3000);
+    window._saveDebounce = setTimeout(() => {
+      saveToDrive();
+      countdownVal = AUTO_SYNC_INTERVAL;
+    }, 5000);
   }
 }
 
@@ -2324,6 +2395,110 @@ function autoSyncUserLogs(task) {
   saveUserLogs();
 }
 
+// ===== MORNING BRIEFING =====
+function showMorningBriefing() {
+  const today = new Date();
+  const todayStr = today.toISOString().split('T')[0];
+  const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
+  const yesterdayStr = yesterday.toISOString().split('T')[0];
+
+  // เช็คว่าเคย skip วันนี้แล้วหรือยัง
+  const skipped = localStorage.getItem('briefing_skip_date');
+  if (skipped === todayStr) return;
+
+  // ข้อมูลงานเมื่อวาน
+  const yesterdayTasks = tasks.filter(t => t.date === yesterdayStr);
+  // งานที่ยังดำเนินการอยู่ (In Progress + Approve)
+  const inProgressTasks = tasks.filter(t => t.status === 'In Progress' || t.status === 'Approve');
+  // งานที่เพิ่งปิดเมื่อวาน
+  const closedYesterday = tasks.filter(t => (t.finish === yesterdayStr) && (t.status === 'Complete' || t.status === 'Close'));
+  // งาน Pending ทั้งหมด
+  const pendingTasks = tasks.filter(t => t.status === 'Pending');
+
+  if (!yesterdayTasks.length && !inProgressTasks.length && !pendingTasks.length) return;
+
+  // Greeting ตามเวลา
+  const hr = today.getHours();
+  const greeting = hr < 12 ? '🌅 อรุณสวัสดิ์!' : hr < 17 ? '☀️ สวัสดีตอนบ่าย!' : '🌙 สวัสดีตอนเย็น!';
+  document.getElementById('briefing-greeting').textContent = greeting;
+  document.getElementById('briefing-date').textContent =
+    today.toLocaleDateString('th-TH', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
+
+  let html = '';
+
+  // งานเมื่อวาน
+  if (yesterdayTasks.length) {
+    html += `<div class="briefing-section">
+      <div class="briefing-section-title">📅 งานที่บันทึกเมื่อวาน (${yesterdayStr})</div>
+      ${yesterdayTasks.map(t => `
+        <div class="briefing-item">
+          <div class="briefing-item-dot" style="background:${t.status==='Complete'||t.status==='Close'?'#2d6a2d':'#e0920a'}"></div>
+          <div>
+            <div>${t.desc}</div>
+            <div class="briefing-meta">${t.project} · ${t.type} · <span class="badge ${badgeClass(t.status)}" style="font-size:10px;padding:1px 6px">${t.status}</span>${t.ticket?` · ${t.ticket}`:''}</div>
+          </div>
+        </div>`).join('')}
+    </div>`;
+  }
+
+  // งานที่กำลังดำเนินการ
+  if (inProgressTasks.length) {
+    html += `<div class="briefing-section">
+      <div class="briefing-section-title" style="color:#7a4a00">⏳ งานที่ยังดำเนินการอยู่ (${inProgressTasks.length} งาน)</div>
+      ${inProgressTasks.map(t => `
+        <div class="briefing-item">
+          <div class="briefing-item-dot" style="background:#e0920a"></div>
+          <div>
+            <div>${t.desc}</div>
+            <div class="briefing-meta">${t.project} · ${t.type} · <span class="badge ${badgeClass(t.status)}" style="font-size:10px;padding:1px 6px">${t.status}</span>${t.ticket?` · ${t.ticket}`:''}${t.start?` · เริ่ม ${formatDate(t.start)}`:''}</div>
+          </div>
+        </div>`).join('')}
+    </div>`;
+  }
+
+  // งาน Pending
+  if (pendingTasks.length) {
+    html += `<div class="briefing-section">
+      <div class="briefing-section-title" style="color:#4a2080">🔔 งานรอดำเนินการ (${pendingTasks.length} งาน)</div>
+      ${pendingTasks.map(t => `
+        <div class="briefing-item">
+          <div class="briefing-item-dot" style="background:#7a2060"></div>
+          <div>
+            <div>${t.desc}</div>
+            <div class="briefing-meta">${t.project} · ${t.type}${t.ticket?` · ${t.ticket}`:''}</div>
+          </div>
+        </div>`).join('')}
+    </div>`;
+  }
+
+  // งานที่เสร็จเมื่อวาน
+  if (closedYesterday.length) {
+    html += `<div class="briefing-section">
+      <div class="briefing-section-title" style="color:#2d6a2d">✅ งานที่เสร็จเมื่อวาน (${closedYesterday.length} งาน)</div>
+      ${closedYesterday.map(t => `
+        <div class="briefing-item">
+          <div class="briefing-item-dot" style="background:#2d6a2d"></div>
+          <div>
+            <div>${t.desc}</div>
+            <div class="briefing-meta">${t.project} · ${t.type}</div>
+          </div>
+        </div>`).join('')}
+    </div>`;
+  }
+
+  if (!html) return;
+  document.getElementById('briefing-content').innerHTML = html;
+  openModal('briefing-modal');
+}
+
+function closeBriefing() {
+  if (document.getElementById('briefing-skip-today').checked) {
+    const today = new Date().toISOString().split('T')[0];
+    localStorage.setItem('briefing_skip_date', today);
+  }
+  closeModal('briefing-modal');
+}
+
 // ===== INIT =====
 loadData();
 loadUserLogs();
@@ -2334,6 +2509,8 @@ window.addEventListener('load', () => setTimeout(tryAutoLogin, 800));
 
 // ตัดการเชื่อมต่อเมื่อปิดหน้าเว็บหรือ tab เท่านั้น
 window.addEventListener('beforeunload', () => {
+  if (syncTimer) clearInterval(syncTimer);
+  if (countdownTimer) clearInterval(countdownTimer);
   if (accessToken) {
     google.accounts.oauth2.revoke(accessToken, () => {});
     accessToken = null;
