@@ -1509,11 +1509,13 @@ async function saveTaskToSupabase(task) {
   showSaveStatus('saving');
   const payload = {
     owner_id: currentUser.id,
-    date: task.date || null,
+    date: normalizeDate(task.date) || null,
     project: task.project, ticket: task.ticket,
     type: task.type, description: task.desc, team: task.team,
-    status: task.status, start_date: task.start || null,
-    due_date: task.due || null, finish_date: task.finish || null,
+    status: task.status,
+    start_date: normalizeDate(task.start) || null,
+    due_date: normalizeDate(task.due) || null,
+    finish_date: normalizeDate(task.finish) || null,
     issue: task.issue, fix: task.fix, result: task.result,
     user_group: task.userGroup
   };
@@ -1563,7 +1565,7 @@ async function saveUserLogToSupabase(log) {
   const payload = {
     owner_id: currentUser.id,
     task_id: log.taskId || null,
-    date: log.date || null,
+    date: normalizeDate(log.date) || null,
     action: log.action, name: log.name,
     sam_account: log.sam, email: log.email,
     group_name: log.group, ticket: log.ticket,
@@ -1661,9 +1663,11 @@ async function importFromDriveJSON(jsonData) {
     // Import tasks
     for (const t of (jsonData.tasks || [])) {
       const task = {
-        date: t.date, project: t.project, ticket: t.ticket,
+        date: normalizeDate(t.date),
+        project: t.project, ticket: t.ticket,
         type: t.type, desc: t.desc, team: t.team, status: t.status,
-        start: t.start, due: t.due, finish: t.finish,
+        start: normalizeDate(t.start), due: normalizeDate(t.due),
+        finish: normalizeDate(t.finish),
         issue: t.issue, fix: t.fix, result: t.result,
         userGroup: t.userGroup, userRows: t.userRows || []
       };
@@ -1673,7 +1677,7 @@ async function importFromDriveJSON(jsonData) {
     // Import user_logs
     for (const l of (jsonData.userLogs || [])) {
       const log = {
-        date: l.date, action: l.action, name: l.name,
+        date: normalizeDate(l.date), action: l.action, name: l.name,
         sam: l.sam, email: l.email, group: l.group,
         ticket: l.ticket, note: l.note, adStatus: l.adStatus
       };
@@ -2992,6 +2996,25 @@ async function doTransferSingle() {
     showSaveStatus('error');
     showToast('❌ โอนงานไม่สำเร็จ: ' + e.message);
   }
+}
+
+// แปลง date format ต่างๆ → YYYY-MM-DD
+function normalizeDate(d) {
+  if (!d) return null;
+  // ถ้าเป็น YYYY-MM-DD อยู่แล้ว
+  if (/^\d{4}-\d{2}-\d{2}$/.test(d)) return d;
+  // DD/MM/YYYY หรือ D/M/YYYY (แบบไทย)
+  const m1 = d.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (m1) return `${m1[3]}-${m1[2].padStart(2,'0')}-${m1[1].padStart(2,'0')}`;
+  // MM/DD/YYYY
+  const m2 = d.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (m2) return `${m2[3]}-${m2[1].padStart(2,'0')}-${m2[2].padStart(2,'0')}`;
+  // ลอง parse ทั่วไป
+  try {
+    const dt = new Date(d);
+    if (!isNaN(dt)) return dt.toISOString().split('T')[0];
+  } catch(e) {}
+  return null;
 }
 
 // ===== IMPORT ข้อมูลเก่าจาก Google Drive JSON =====
