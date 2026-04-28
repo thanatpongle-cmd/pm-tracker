@@ -1402,7 +1402,10 @@ function showSaveStatus(state) {
 async function supabaseLogin() {
   const { error } = await sb.auth.signInWithOAuth({
     provider: 'google',
-    options: { redirectTo: window.location.href }
+    options: {
+      redirectTo: 'https://thanatpongle-cmd.github.io/pm-tracker/',
+      queryParams: { access_type: 'offline', prompt: 'consent' }
+    }
   });
   if (error) showToast('❌ Login ไม่สำเร็จ: ' + error.message);
 }
@@ -1420,7 +1423,20 @@ async function supabaseLogout() {
 }
 
 async function getProfile() {
-  const { data } = await sb.from('profiles').select('*').eq('id', currentUser.id).single();
+  const { data, error } = await sb.from('profiles').select('*').eq('id', currentUser.id).single();
+  if (error) {
+    // ถ้า profile ยังไม่มี ให้สร้างใหม่
+    if (error.code === 'PGRST116') {
+      const { data: newProfile } = await sb.from('profiles').insert({
+        id: currentUser.id,
+        email: currentUser.email,
+        full_name: currentUser.user_metadata?.full_name || currentUser.email,
+        role: 'member'
+      }).select().single();
+      return newProfile || { email: currentUser.email, role: 'member' };
+    }
+    throw error;
+  }
   return data;
 }
 
@@ -1677,26 +1693,49 @@ async function importFromDriveJSON(jsonData) {
 
 // ===== TRY AUTO-LOGIN =====
 async function tryAutoLogin() {
-  const { data: { session } } = await sb.auth.getSession();
-  if (session) {
-    currentUser = session.user;
-    currentProfile = await getProfile();
-    setSyncState('syncing', 'กำลังโหลดข้อมูล...');
-    await loadAllData();
+  // จัดการ hash จาก OAuth redirect ก่อน
+  const hash = window.location.hash;
+  if (hash && hash.includes('access_token')) {
+    // ล้าง hash ออกจาก URL โดยไม่ reload
+    history.replaceState(null, '', window.location.pathname);
   }
-  // Listen สำหรับ Auth state changes (หลัง redirect กลับมา)
+
+  // ฟัง auth state changes
   sb.auth.onAuthStateChange(async (event, session) => {
-    if (event === 'SIGNED_IN' && session) {
+    if (event === 'SIGNED_IN' && session && !currentUser) {
       currentUser = session.user;
-      currentProfile = await getProfile();
       setSyncState('syncing', 'กำลังโหลดข้อมูล...');
+      try {
+        currentProfile = await getProfile();
+      } catch(e) {
+        currentProfile = { email: currentUser.email, role: 'member' };
+      }
       await loadAllData();
     } else if (event === 'SIGNED_OUT') {
       currentUser = null; currentProfile = null;
       tasks = []; userLogs = []; adBaseData = [];
       setSyncState('disconnected', 'ยังไม่ได้เข้าสู่ระบบ');
+    } else if (event === 'TOKEN_REFRESHED' && session) {
+      currentUser = session.user;
     }
   });
+
+  // เช็ค session ที่มีอยู่แล้ว
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    if (session && !currentUser) {
+      currentUser = session.user;
+      setSyncState('syncing', 'กำลังโหลดข้อมูล...');
+      try {
+        currentProfile = await getProfile();
+      } catch(e) {
+        currentProfile = { email: currentUser.email, role: 'member' };
+      }
+      await loadAllData();
+    }
+  } catch(e) {
+    console.error('Session check failed:', e);
+  }
 }
 
 // ===== NAVIGATION =====
