@@ -1115,7 +1115,23 @@
           </div>
           <div id="transfer-tasks-list" style="padding:0 16px 16px"></div>
         </div>
-      </div>
+
+        <!-- Audit Log (Admin only) -->
+        <div class="table-card" style="margin-top:16px">
+          <div class="table-header">
+            <div class="table-header-title">🔐 Audit Log</div>
+            <button class="btn" style="font-size:12px" onclick="loadAuditLog()">🔄 โหลด</button>
+          </div>
+          <div style="max-height:300px;overflow-y:auto">
+            <table class="um-table" style="width:100%">
+              <thead><tr><th>เวลา</th><th>ผู้ใช้</th><th>Action</th><th>รายละเอียด</th></tr></thead>
+              <tbody id="audit-log-body">
+                <tr><td colspan="4" style="text-align:center;color:var(--text3);padding:16px">กด "โหลด" เพื่อดู Audit Log</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div><!-- end view-team -->
 
     </div><!-- end content -->
   </div><!-- end main -->
@@ -1250,6 +1266,12 @@
       </div>
       <div style="margin-top:12px;padding:10px 14px;background:var(--amber-bg);border-radius:var(--radius);font-size:12px;color:var(--amber)">
         ⚠️ หลังโอนงาน เจ้าของเดิมจะไม่เห็นงานนี้อีก (ยกเว้น Admin)
+      </div>
+      <div style="margin-top:14px">
+        <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px">📋 ประวัติการโอนงาน</div>
+        <div id="transfer-history-list" style="max-height:160px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius);padding:8px 12px">
+          <div style="font-size:12px;color:var(--text3)">กำลังโหลด...</div>
+        </div>
       </div>
     </div>
     <div class="modal-footer">
@@ -1741,6 +1763,11 @@ async function tryAutoLogin() {
         currentProfile = { email: currentUser.email, role: 'member' };
       }
       await loadAllData();
+      // บันทึก audit log การ login
+      logAudit('LOGIN', 'profile', currentUser.id, { email: currentUser.email });
+      // อัปเดต last_accessed
+      sb.from('profiles').update({ last_accessed_at: new Date().toISOString() })
+        .eq('id', currentUser.id).then(() => {});
     }
   } catch(e) {
     console.error('Session check failed:', e);
@@ -2055,11 +2082,18 @@ async function saveTask() {
   const status = document.getElementById('f-status').value;
   if (!date || !project || !type || !desc || !status) { showToast('⚠️ กรุณากรอกข้อมูลที่จำเป็น (วันที่ โปรเจกต์ ประเภท รายละเอียด สถานะ)'); return; }
   const task = {
-    id: nextId++, date, project, ticket: document.getElementById('f-ticket').value.trim(),
-    type, desc, team: document.getElementById('f-team').value.trim(), status,
-    start: document.getElementById('f-start').value, due: document.getElementById('f-due').value,
-    finish: document.getElementById('f-finish').value, issue: document.getElementById('f-issue').value.trim(),
-    fix: document.getElementById('f-fix').value.trim(), result: document.getElementById('f-result').value.trim(),
+    id: nextId++,
+    date, project: sanitize(project),
+    ticket: sanitize(document.getElementById('f-ticket').value.trim()),
+    type, desc: sanitize(desc),
+    team: sanitize(document.getElementById('f-team').value.trim()),
+    status,
+    start: document.getElementById('f-start').value,
+    due: document.getElementById('f-due').value,
+    finish: document.getElementById('f-finish').value,
+    issue: sanitize(document.getElementById('f-issue').value.trim()),
+    fix: sanitize(document.getElementById('f-fix').value.trim()),
+    result: sanitize(document.getElementById('f-result').value.trim()),
     userGroup: document.getElementById('f-user-group').value,
     userRows: (type === 'Add User' || type === 'Remove User') ? getUserRows('f') : []
   };
@@ -2201,6 +2235,7 @@ async function deleteTask(id) {
   if (!t) return;
   try {
     await deleteTaskFromSupabase(t);
+    await logAudit('DELETE_TASK', 'task', t.id, { project: t.project, desc: t.desc?.substring(0,100) });
     tasks = tasks.filter(t => t.id !== id);
     userLogs = userLogs.filter(l => l.taskId !== t._dbId);
     renderTasks(); updateProjectFilter();
@@ -2946,24 +2981,80 @@ function toggleAllTransfer(cb) {
   document.querySelectorAll('.transfer-check').forEach(c => c.checked = cb.checked);
 }
 
+// ===== SECURITY HELPERS =====
+function sanitize(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;')
+    .trim()
+    .substring(0, 2000); // จำกัดความยาว
+}
+
+async function logAudit(action, targetType, targetId, detail = {}) {
+  try {
+    await sb.from('audit_logs').insert({
+      user_id: currentUser?.id,
+      user_email: currentProfile?.email,
+      action, target_type: targetType,
+      target_id: String(targetId),
+      detail,
+      ip_hint: 'browser'
+    });
+  } catch(e) { console.warn('Audit log failed:', e.message); }
+}
+
+async function recordTransferHistory(taskId, fromUserId, toUserId, reason = '') {
+  try {
+    const fromMember = teamMembers.find(m => m.id === fromUserId);
+    const toMember = teamMembers.find(m => m.id === toUserId);
+    await sb.from('task_transfer_history').insert({
+      task_id: taskId,
+      from_user_id: fromUserId,
+      to_user_id: toUserId,
+      from_email: fromMember?.email || '',
+      to_email: toMember?.email || '',
+      reason: reason || 'โอนโดย Admin',
+      transferred_by: currentUser?.id,
+      transferred_by_email: currentProfile?.email
+    });
+  } catch(e) { console.warn('Transfer history failed:', e.message); }
+}
+
+async function loadTransferHistory(taskId) {
+  try {
+    const { data } = await sb.from('task_transfer_history')
+      .select('*')
+      .eq('task_id', taskId)
+      .order('transferred_at', { ascending: false });
+    return data || [];
+  } catch(e) { return []; }
+}
+
 async function doTransferTasks() {
   const toId = document.getElementById('transfer-to').value;
   const checked = [...document.querySelectorAll('.transfer-check:checked')].map(c => c.value);
   if (!toId) { showToast('⚠️ เลือกสมาชิกปลายทางก่อนครับ'); return; }
   if (!checked.length) { showToast('⚠️ เลือกงานที่ต้องการโอนก่อนครับ'); return; }
   const toMember = teamMembers.find(m => m.id === toId);
+  const reason = prompt(`เหตุผลในการโอนงาน ${checked.length} งาน ให้ ${toMember?.full_name || toMember?.email}:`, 'โอนงานโดย Admin') || '';
+  if (reason === null) return; // กด Cancel
   if (!confirm(`ยืนยันโอน ${checked.length} งาน ให้ ${toMember?.full_name || toMember?.email}?`)) return;
   showSaveStatus('saving');
   try {
     for (const taskId of checked) {
-      await sb.from('tasks').update({ owner_id: toId }).eq('id', taskId);
       const t = tasks.find(t => t.id === taskId);
+      const fromId = t?.owner_id;
+      await sb.from('tasks').update({ owner_id: toId }).eq('id', taskId);
       if (t) t.owner_id = toId;
+      await recordTransferHistory(taskId, fromId, toId, reason);
+      await logAudit('TRANSFER_TASK', 'task', taskId, { to: toMember?.email, reason });
     }
     showSaveStatus('saved');
     showToast(`✅ โอน ${checked.length} งาน เรียบร้อยแล้ว`);
-    loadTransferTasks();
-    renderDashboard();
+    loadTransferTasks(); renderDashboard();
   } catch(e) {
     showSaveStatus('error');
     showToast('❌ โอนงานไม่สำเร็จ: ' + e.message);
@@ -2976,9 +3067,26 @@ function openTransferModal() {
   const t = tasks.find(t => t.id === transferTaskId);
   if (!t) return;
   document.getElementById('transfer-task-desc').innerHTML =
-    `<strong>${t.project}</strong> · ${t.desc?.substring(0,80)}${t.desc?.length>80?'...':''}`;
+    `<strong>${sanitize(t.project)}</strong> · ${sanitize(t.desc?.substring(0,80))}${t.desc?.length>80?'...':''}`;
   populateTransferSelects();
   document.getElementById('transfer-to-single').value = '';
+  // โหลด transfer history
+  loadTransferHistory(t.id).then(history => {
+    const histEl = document.getElementById('transfer-history-list');
+    if (!histEl) return;
+    if (!history.length) { histEl.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:6px 0">ยังไม่มีประวัติการโอนงาน</div>'; return; }
+    histEl.innerHTML = history.map(h => `
+      <div style="display:flex;gap:8px;align-items:flex-start;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px">
+        <div style="color:var(--text3);white-space:nowrap;min-width:80px">${new Date(h.transferred_at).toLocaleDateString('th-TH')}</div>
+        <div style="flex:1">
+          <span style="color:var(--red)">${h.from_email||'-'}</span>
+          <span style="color:var(--text3)"> → </span>
+          <span style="color:var(--green)">${h.to_email||'-'}</span>
+          ${h.reason ? `<div style="color:var(--text2);font-size:11px;margin-top:2px">📝 ${sanitize(h.reason)}</div>` : ''}
+        </div>
+        <div style="font-size:11px;color:var(--text3)">${h.transferred_by_email||''}</div>
+      </div>`).join('');
+  });
   openModal('transfer-modal');
 }
 
@@ -2987,11 +3095,16 @@ async function doTransferSingle() {
   if (!toId) { showToast('⚠️ เลือกสมาชิกปลายทางก่อนครับ'); return; }
   const t = tasks.find(t => t.id === transferTaskId);
   const toMember = teamMembers.find(m => m.id === toId);
+  const reason = prompt(`เหตุผลในการโอนงานให้ ${toMember?.full_name || toMember?.email}:`, '') || '';
+  if (reason === null) return;
   if (!confirm(`ยืนยันโอนงานนี้ให้ ${toMember?.full_name || toMember?.email}?`)) return;
   showSaveStatus('saving');
   try {
-    await sb.from('tasks').update({ owner_id: toId }).eq('id', t._dbId);
+    const fromId = t.owner_id;
+    await sb.from('tasks').update({ owner_id: toId }).eq('id', t._dbId || t.id);
     t.owner_id = toId;
+    await recordTransferHistory(t.id, fromId, toId, reason);
+    await logAudit('TRANSFER_TASK', 'task', t.id, { to: toMember?.email, reason });
     showSaveStatus('saved');
     closeModal('transfer-modal');
     closeModal('detail-modal');
@@ -3020,6 +3133,33 @@ function normalizeDate(d) {
     if (!isNaN(dt)) return dt.toISOString().split('T')[0];
   } catch(e) {}
   return null;
+}
+
+async function loadAuditLog() {
+  const tbody = document.getElementById('audit-log-body');
+  if (!tbody) return;
+  tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text3);padding:12px">กำลังโหลด...</td></tr>';
+  try {
+    const { data } = await sb.from('audit_logs')
+      .select('*').order('created_at', { ascending: false }).limit(100);
+    if (!data?.length) {
+      tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text3);padding:12px">ยังไม่มี Audit Log</td></tr>';
+      return;
+    }
+    const actionColor = { LOGIN:'#2d6a2d', DELETE_TASK:'#8a2020', TRANSFER_TASK:'#1a4a8a', CHANGE_ROLE:'#4a2080' };
+    tbody.innerHTML = data.map(l => {
+      const color = actionColor[l.action] || '#555';
+      const detail = l.detail ? JSON.stringify(l.detail).substring(0,80) : '-';
+      return `<tr>
+        <td style="font-size:11px;white-space:nowrap;color:var(--text2)">${new Date(l.created_at).toLocaleString('th-TH')}</td>
+        <td style="font-size:12px">${l.user_email||'-'}</td>
+        <td><span style="background:${color}18;color:${color};padding:2px 6px;border-radius:4px;font-size:11px;font-weight:600">${l.action}</span></td>
+        <td style="font-size:11px;color:var(--text2)">${detail}</td>
+      </tr>`;
+    }).join('');
+  } catch(e) {
+    tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--red);padding:12px">โหลดไม่สำเร็จ: ${e.message}</td></tr>`;
+  }
 }
 
 // ===== IMPORT ข้อมูลเก่าจาก Google Drive JSON =====
