@@ -2145,10 +2145,6 @@ async function updateTask() {
     showToast('❌ แก้ไขไม่สำเร็จ: ' + e.message);
   }
 }
-  renderTasks();
-  updateProjectFilter();
-  showToast('✅ แก้ไขงานเรียบร้อยแล้ว');
-}
 
 // ===== DELETE =====
 async function deleteTask(id) {
@@ -2363,7 +2359,7 @@ function importADCSV(e) {
   const file = e.target.files[0];
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = ev => {
+  reader.onload = async ev => {
     const parsed = parseADCSV(ev.target.result);
     const action = adBaseData.length > 0
       ? confirm(`มีข้อมูลตั้งต้น ${adBaseData.length} records อยู่แล้ว\n\nกด OK = แทนที่ทั้งหมด\nกด Cancel = ผสานข้อมูล`)
