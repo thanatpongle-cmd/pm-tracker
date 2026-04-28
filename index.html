@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>PM Task Tracker Dashboard</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
-<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
 
@@ -671,6 +671,21 @@
   .briefing-item-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-top: 4px; }
   .briefing-empty { font-size: 12px; color: var(--text3); padding: 6px 0; font-style: italic; }
   .briefing-meta { font-size: 11px; color: var(--text2); margin-top: 2px; }
+  /* TEAM MANAGEMENT */
+  .team-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; margin-bottom: 20px; }
+  .member-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 18px; box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 10px; }
+  .member-card-top { display: flex; align-items: center; gap: 12px; }
+  .member-avatar { width: 42px; height: 42px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 16px; font-weight: 600; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .member-info { flex: 1; min-width: 0; }
+  .member-name { font-size: 13px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .member-email { font-size: 11px; color: var(--text3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .role-badge-admin { background: #fff3cd; color: #856404; border: 1px solid #ffc107; padding: 2px 8px; border-radius: 100px; font-size: 11px; font-weight: 600; }
+  .role-badge-member { background: var(--accent-light); color: var(--accent); border: 1px solid #b8d0ef; padding: 2px 8px; border-radius: 100px; font-size: 11px; font-weight: 600; }
+  .member-stats { display: flex; gap: 12px; font-size: 11px; color: var(--text2); padding-top: 8px; border-top: 1px solid var(--border); }
+  .member-stat { display: flex; flex-direction: column; gap: 2px; }
+  .member-stat-val { font-size: 16px; font-weight: 600; color: var(--text); }
+  .member-actions { display: flex; gap: 6px; }
+  .transfer-select { padding: 6px 10px; border: 1px solid var(--border2); border-radius: var(--radius); font-size: 12px; font-family: var(--font); background: var(--surface); color: var(--text); flex: 1; }
 </style>
 </head>
 <body>
@@ -681,12 +696,12 @@
     <div class="login-logo">PM Tracker</div>
     <div class="login-sub">Task Management Dashboard</div>
     <div class="login-desc">
-      ข้อมูลงานของคุณถูกเก็บอย่างปลอดภัยใน Google Drive<br>
-      กรุณาเชื่อมต่อ Google Drive เพื่อเข้าถึงข้อมูล
+      ข้อมูลงานของคุณถูกเก็บอย่างปลอดภัยใน Supabase<br>
+      กรุณาเข้าสู่ระบบด้วย Google เพื่อเข้าถึงข้อมูล
     </div>
-    <button class="btn-google-login" onclick="gdriveLogin()">
+    <button class="btn-google-login" onclick="supabaseLogin()">
       <img src="https://www.google.com/favicon.ico" alt="Google">
-      เชื่อมต่อด้วย Google Drive
+      เข้าสู่ระบบด้วย Google
     </button>
     <div class="login-footer">
       🔒 ข้อมูลของคุณปลอดภัย · เข้าถึงได้เฉพาะบัญชีของคุณเท่านั้น<br>
@@ -715,6 +730,9 @@
       <div class="nav-item" onclick="switchView('users', this)">
         <span class="nav-icon">👥</span> User Management
       </div>
+      <div class="nav-item" id="nav-team" style="display:none" onclick="switchView('team', this)">
+        <span class="nav-icon">🏢</span> จัดการทีม
+      </div>
     </div>
     <div class="sidebar-footer" id="sidebar-footer">
       v1.1 · Local Storage
@@ -727,22 +745,25 @@
       <div class="topbar-title" id="topbar-title">Dashboard</div>
       <div class="topbar-actions">
         <button class="btn" onclick="exportCSV()">⬇ Export CSV</button>
+        <button class="btn" onclick="triggerImportJSON()" title="Import ข้อมูลเก่าจาก Google Drive JSON">📂 Import จาก Drive</button>
         <button class="btn" onclick="importCSV()">⬆ Import CSV</button>
         <input type="file" id="csv-file-input" accept=".csv" style="display:none" onchange="handleImport(event)">
         <button class="btn btn-primary" onclick="switchView('add', document.querySelector('.nav-item:nth-child(3)'))">+ เพิ่มงาน</button>
       </div>
     </div>
 
-    <!-- GOOGLE DRIVE SYNC BAR -->
+    <!-- SUPABASE SYNC BAR -->
     <div class="sync-bar" id="sync-bar">
       <div class="sync-dot" id="sync-dot"></div>
-      <span class="sync-label" id="sync-label">ยังไม่ได้เชื่อมต่อ Google Drive</span>
+      <span class="sync-label" id="sync-label">ยังไม่ได้เข้าสู่ระบบ</span>
       <span id="sync-countdown" style="font-size:11px;color:var(--text3);display:none"></span>
-      <button class="btn-google" id="btn-gdrive-login" onclick="gdriveLogin()">
-        <img src="https://www.google.com/favicon.ico" alt="Google"> เชื่อมต่อ Google Drive
+      <span id="save-status" style="font-size:11px;display:none;padding:2px 8px;border-radius:4px;font-weight:500"></span>
+      <button class="btn-google" id="btn-gdrive-login" onclick="supabaseLogin()">
+        <img src="https://www.google.com/favicon.ico" alt="Google"> เข้าสู่ระบบด้วย Google
       </button>
-      <button class="btn" id="btn-gdrive-sync" onclick="syncNow()" style="display:none;font-size:12px;padding:5px 12px">🔄 Sync ตอนนี้</button>
-      <button class="btn" id="btn-gdrive-logout" onclick="gdriveLogout()" style="display:none;font-size:12px;padding:5px 12px;color:var(--text3)">ออกจากระบบ</button>
+      <button class="btn" id="btn-gdrive-sync" onclick="syncNow()" style="display:none;font-size:12px;padding:5px 12px">🔄 รีเฟรช</button>
+      <a id="btn-supabase-link" href="https://supabase.com/dashboard/project/alfmjglvuiikjjlnelev/editor" target="_blank" class="btn" style="display:none;font-size:12px;padding:5px 12px" title="ดูข้อมูลใน Supabase">🗄 Supabase</a>
+      <button class="btn" id="btn-gdrive-logout" onclick="supabaseLogout()" style="display:none;font-size:12px;padding:5px 12px;color:var(--text3)">ออกจากระบบ</button>
     </div>
 
     <div class="content">
@@ -1053,6 +1074,49 @@
         </div>
       </div>
 
+      <!-- TEAM MANAGEMENT VIEW (Admin only) -->
+      <div class="view" id="view-team">
+        <div class="table-card" style="margin-bottom:16px">
+          <div class="table-header">
+            <div class="table-header-title">🏢 จัดการทีม</div>
+            <span id="team-count" style="font-size:12px;color:var(--text3)"></span>
+          </div>
+          <div style="padding:16px;border-bottom:1px solid var(--border);background:var(--surface2);display:flex;gap:10px;align-items:center">
+            <span style="font-size:12px;color:var(--text2)">🔍 ค้นหา</span>
+            <input type="text" class="filter-input" id="team-search" placeholder="ชื่อหรือ email..." oninput="renderTeam()" style="width:220px">
+            <select class="filter-input" id="team-filter-role" onchange="renderTeam()">
+              <option value="">Role ทั้งหมด</option>
+              <option value="admin">Admin</option>
+              <option value="member">Member</option>
+            </select>
+            <button class="btn btn-primary" style="margin-left:auto" onclick="loadTeam()">🔄 รีเฟรช</button>
+          </div>
+          <div id="team-grid" style="padding:16px"><div class="empty"><div class="empty-icon">🏢</div><div class="empty-text">กำลังโหลดข้อมูลทีม...</div></div></div>
+        </div>
+
+        <!-- โอนงานแบบ Batch -->
+        <div class="table-card">
+          <div class="table-header"><div class="table-header-title">🔄 โอนงานระหว่างสมาชิก</div></div>
+          <div style="padding:16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+            <div style="display:flex;align-items:center;gap:8px;font-size:13px">
+              <span style="color:var(--text2)">จาก</span>
+              <select class="transfer-select" id="transfer-from" style="min-width:200px" onchange="loadTransferTasks()">
+                <option value="">-- เลือกสมาชิก --</option>
+              </select>
+            </div>
+            <div style="font-size:18px;color:var(--text3)">→</div>
+            <div style="display:flex;align-items:center;gap:8px;font-size:13px">
+              <span style="color:var(--text2)">ไปยัง</span>
+              <select class="transfer-select" id="transfer-to" style="min-width:200px">
+                <option value="">-- เลือกสมาชิก --</option>
+              </select>
+            </div>
+            <button class="btn btn-primary" onclick="doTransferTasks()">โอนงานที่เลือก</button>
+          </div>
+          <div id="transfer-tasks-list" style="padding:0 16px 16px"></div>
+        </div>
+      </div>
+
     </div><!-- end content -->
   </div><!-- end main -->
 </div><!-- end layout -->
@@ -1067,6 +1131,7 @@
     <div class="modal-body" id="detail-body"></div>
     <div class="modal-footer">
       <button class="btn btn-danger" id="detail-delete-btn">🗑 ลบงาน</button>
+      <button class="btn" id="detail-transfer-btn" style="display:none" onclick="openTransferModal()">🔄 โอนงาน</button>
       <button class="btn" onclick="closeModal('detail-modal')">ปิด</button>
       <button class="btn btn-primary" id="detail-edit-btn">✏️ แก้ไข</button>
     </div>
@@ -1168,6 +1233,32 @@
   </div>
 </div>
 
+<!-- TRANSFER MODAL -->
+<div class="modal-overlay" id="transfer-modal">
+  <div class="modal" style="width:460px">
+    <div class="modal-header">
+      <div class="modal-title">🔄 โอนงานให้สมาชิก</div>
+      <button class="modal-close" onclick="closeModal('transfer-modal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div style="font-size:13px;color:var(--text2);margin-bottom:14px" id="transfer-task-desc"></div>
+      <div class="form-group">
+        <label class="form-label">โอนให้</label>
+        <select class="form-select" id="transfer-to-single">
+          <option value="">-- เลือกสมาชิก --</option>
+        </select>
+      </div>
+      <div style="margin-top:12px;padding:10px 14px;background:var(--amber-bg);border-radius:var(--radius);font-size:12px;color:var(--amber)">
+        ⚠️ หลังโอนงาน เจ้าของเดิมจะไม่เห็นงานนี้อีก (ยกเว้น Admin)
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal('transfer-modal')">ยกเลิก</button>
+      <button class="btn btn-primary" onclick="doTransferSingle()">✅ ยืนยันโอนงาน</button>
+    </div>
+  </div>
+</div>
+
 <!-- MORNING BRIEFING MODAL -->
 <div class="modal-overlay" id="briefing-modal">
   <div class="modal briefing-modal">
@@ -1245,14 +1336,17 @@ const PAGE_SIZE = 15;
 let editingId = null;
 let charts = {};
 
-// ===== GOOGLE DRIVE CONFIG =====
-const CLIENT_ID = '871942533931-pehfqfm2m9v0v075dvo0ia1hmd5trim1.apps.googleusercontent.com';
-const SCOPES = 'https://www.googleapis.com/auth/drive.file';
-const FILE_NAME = 'pm_tracker_data.json';
-let accessToken = null;
-let driveFileId = null;
+// ===== SUPABASE CONFIG =====
+const SUPABASE_URL = 'https://alfmjglvuiikjjlnelev.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_yyn0Vflbht170qW5SBzldg_g98xTq9R';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+let currentUser = null;
+let currentProfile = null;
 let syncTimer = null;
 let pendingSave = false;
+const AUTO_SYNC_INTERVAL = 300;
+let countdownVal = AUTO_SYNC_INTERVAL;
+let countdownTimer = null;
 
 // ===== SYNC UI =====
 function setSyncState(state, label) {
@@ -1261,163 +1355,254 @@ function setSyncState(state, label) {
   const btnLogin = document.getElementById('btn-gdrive-login');
   const btnSync = document.getElementById('btn-gdrive-sync');
   const btnLogout = document.getElementById('btn-gdrive-logout');
+  const btnSb = document.getElementById('btn-supabase-link');
   const footer = document.getElementById('sidebar-footer');
   const loginScreen = document.getElementById('login-screen');
   dot.className = 'sync-dot' + (state !== 'disconnected' ? ' ' + state : '');
   lbl.textContent = label;
   if (state === 'disconnected') {
-    btnLogin.style.display = ''; btnSync.style.display = 'none'; btnLogout.style.display = 'none';
-    footer.textContent = 'v1.1 · Local Storage';
-    loginScreen.classList.remove('hidden'); // แสดงหน้า login
+    btnLogin.style.display = ''; btnSync.style.display = 'none';
+    btnLogout.style.display = 'none'; btnSb.style.display = 'none';
+    footer.textContent = 'v2.0 · Supabase';
+    loginScreen.classList.remove('hidden');
   } else {
-    btnLogin.style.display = 'none'; btnSync.style.display = ''; btnLogout.style.display = '';
-    footer.textContent = 'v1.1 · Google Drive';
-    loginScreen.classList.add('hidden'); // ซ่อนหน้า login
+    btnLogin.style.display = 'none'; btnSync.style.display = '';
+    btnLogout.style.display = ''; btnSb.style.display = '';
+    footer.textContent = `v2.0 · ${currentProfile?.role === 'admin' ? '👑 Admin' : '👤 Member'}`;
+    loginScreen.classList.add('hidden');
   }
 }
 
-// ===== GOOGLE OAUTH =====
-function gdriveLogin() {
-  const client = google.accounts.oauth2.initTokenClient({
-    client_id: CLIENT_ID,
-    scope: SCOPES,
-    callback: async (resp) => {
-      if (resp.error) { setSyncState('error', 'เชื่อมต่อไม่สำเร็จ: ' + resp.error); return; }
-      accessToken = resp.access_token;
-      // ไม่บันทึก token ลง localStorage เพื่อความปลอดภัย
-      setSyncState('syncing', 'กำลังโหลดข้อมูลจาก Google Drive...');
-      await loadFromDrive();
-    }
-  });
-  client.requestAccessToken();
+// แสดงสถานะการบันทึกใน sync bar
+function showSaveStatus(state) {
+  const el = document.getElementById('save-status');
+  if (!el) return;
+  if (state === 'saving') {
+    el.style.display = '';
+    el.style.background = '#fef3e0';
+    el.style.color = '#7a4a00';
+    el.textContent = '💾 กำลังบันทึก...';
+  } else if (state === 'saved') {
+    el.style.display = '';
+    el.style.background = '#e8f4e8';
+    el.style.color = '#2d6a2d';
+    const now = new Date().toLocaleTimeString('th-TH', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+    el.textContent = `✅ บันทึกแล้ว ${now}`;
+    setTimeout(() => { el.style.display = 'none'; }, 5000);
+  } else if (state === 'error') {
+    el.style.display = '';
+    el.style.background = '#fde8e8';
+    el.style.color = '#8a2020';
+    el.textContent = '❌ บันทึกไม่สำเร็จ';
+    setTimeout(() => { el.style.display = 'none'; }, 8000);
+  }
 }
 
-function gdriveLogout() {
-  if (accessToken) google.accounts.oauth2.revoke(accessToken, () => {});
-  accessToken = null; driveFileId = null;
+// ===== AUTH =====
+async function supabaseLogin() {
+  const { error } = await sb.auth.signInWithOAuth({
+    provider: 'google',
+    options: { redirectTo: window.location.href }
+  });
+  if (error) showToast('❌ Login ไม่สำเร็จ: ' + error.message);
+}
+
+async function supabaseLogout() {
   if (syncTimer) clearInterval(syncTimer);
   if (countdownTimer) clearInterval(countdownTimer);
-  localStorage.removeItem('gdrive_token');
-  localStorage.removeItem('gdrive_file_id');
-  google.accounts.id.disableAutoSelect();
-  tasks = [];
+  await sb.auth.signOut();
+  currentUser = null; currentProfile = null;
+  tasks = []; userLogs = []; adBaseData = [];
   const cd = document.getElementById('sync-countdown');
   if (cd) cd.style.display = 'none';
-  setSyncState('disconnected', 'ยังไม่ได้เชื่อมต่อ Google Drive');
+  setSyncState('disconnected', 'ยังไม่ได้เข้าสู่ระบบ');
   showToast('ออกจากระบบเรียบร้อยแล้ว');
 }
 
-// ===== DRIVE FILE OPERATIONS =====
-async function findDriveFile() {
-  const res = await fetch(
-    `https://www.googleapis.com/drive/v3/files?q=name='${FILE_NAME}' and trashed=false&spaces=drive&fields=files(id,name,modifiedTime)`,
-    { headers: { Authorization: `Bearer ${accessToken}` } }
-  );
-  const data = await res.json();
-  return data.files && data.files.length > 0 ? data.files[0] : null;
+async function getProfile() {
+  const { data } = await sb.from('profiles').select('*').eq('id', currentUser.id).single();
+  return data;
 }
 
-async function loadFromDrive() {
+// ===== LOAD DATA FROM SUPABASE =====
+async function loadAllData() {
+  setSyncState('syncing', 'กำลังโหลดข้อมูล...');
   try {
-    setSyncState('syncing', 'กำลังค้นหาไฟล์ใน Google Drive...');
-    let file = await findDriveFile();
-    if (!file) {
-      // ไม่มีไฟล์ใน Drive → ใช้ข้อมูล local แล้ว save ขึ้น Drive
-      setSyncState('syncing', 'ยังไม่มีไฟล์ใน Drive — กำลังสร้างใหม่...');
-      await saveToDrive();
-      setSyncState('connected', `✓ เชื่อมต่อแล้ว · ไฟล์: ${FILE_NAME}`);
-      showToast('✅ สร้างไฟล์ใน Google Drive สำเร็จ');
-      setTimeout(showMorningBriefing, 800);
-    } else {
-      driveFileId = file.id;
-      // ไม่บันทึก fileId ลง localStorage - เก็บแค่ใน memory
-      // โหลดข้อมูลจาก Drive
-      setSyncState('syncing', 'กำลังโหลดข้อมูล...');
-      const res = await fetch(
-        `https://www.googleapis.com/drive/v3/files/${driveFileId}?alt=media`,
-        { headers: { Authorization: `Bearer ${accessToken}` } }
-      );
-      const data = await res.json();
-      if (data.tasks) {
-        tasks = data.tasks;
-        nextId = data.nextId || 100;
-        if (data.userLogs) { userLogs = data.userLogs; nextUlId = data.nextUlId || 1; }
-        if (data.adBaseData) { adBaseData = data.adBaseData; adData = [...adBaseData]; }
-        saveLocal();
-        renderDashboard();
-        updateProjectFilter();
-        if (document.getElementById('view-tasks').classList.contains('active')) renderTasks();
-      }
-      const mod = new Date(file.modifiedTime).toLocaleString('th-TH');
-      setSyncState('connected', `✓ เชื่อมต่อแล้ว · อัปเดตล่าสุด: ${mod}`);
-      showToast('✅ โหลดข้อมูลจาก Google Drive สำเร็จ');
-      // แสดง Morning Briefing หลังโหลดข้อมูลเสร็จ
-      setTimeout(showMorningBriefing, 800);
+    // โหลด tasks
+    const { data: tasksData, error: tErr } = await sb.from('tasks')
+      .select('*, task_users(*)')
+      .order('date', { ascending: false });
+    if (tErr) throw tErr;
+
+    // แปลง Supabase format → internal format
+    tasks = (tasksData || []).map(t => ({
+      id: t.id, _dbId: t.id,
+      date: t.date, project: t.project, ticket: t.ticket,
+      type: t.type, desc: t.description, team: t.team,
+      status: t.status, start: t.start_date, due: t.due_date,
+      finish: t.finish_date, issue: t.issue, fix: t.fix,
+      result: t.result, userGroup: t.user_group,
+      userRows: (t.task_users || []).map(u => ({
+        name: u.name, sam: u.sam_account, email: u.email,
+        group: u.group_name, action: u.action
+      })),
+      owner_id: t.owner_id
+    }));
+
+    // โหลด user_logs
+    const { data: logsData } = await sb.from('user_logs')
+      .select('*').order('date', { ascending: false });
+    userLogs = (logsData || []).map(l => ({
+      id: l.id, _dbId: l.id, taskId: l.task_id,
+      date: l.date, action: l.action, name: l.name,
+      sam: l.sam_account, email: l.email, group: l.group_name,
+      ticket: l.ticket, note: l.note, adStatus: l.ad_status
+    }));
+
+    // โหลด ad_base_data
+    const { data: adData2 } = await sb.from('ad_base_data').select('*');
+    adBaseData = (adData2 || []).map(r => ({
+      Name: r.name, SamAccountName: r.sam_account,
+      Mail: r.email, SourceGroup: r.source_group,
+      _dept: r.dept, DistinguishedName: r.distinguished_name,
+      _dbId: r.id
+    }));
+
+    // หา nextId
+    nextId = tasks.length ? 100 : 100;
+    nextUlId = userLogs.length ? 100 : 1;
+
+    setSyncState('connected', `✓ ${currentProfile?.email} · โหลดข้อมูลแล้ว`);
+    renderDashboard();
+    updateProjectFilter();
+    // แสดงเมนูจัดการทีม เฉพาะ Admin
+    if (currentProfile?.role === 'admin') {
+      document.getElementById('nav-team').style.display = '';
     }
     startAutoSync();
+    setTimeout(showMorningBriefing, 800);
+    showToast(`✅ โหลดข้อมูลสำเร็จ · ${tasks.length} งาน · ${userLogs.length} user logs`);
   } catch(e) {
     setSyncState('error', 'โหลดข้อมูลไม่สำเร็จ: ' + e.message);
     console.error(e);
   }
 }
 
-async function saveToDrive() {
-  if (!accessToken) return;
-  try {
-    setSyncState('syncing', 'กำลัง Sync ขึ้น Google Drive...');
-    const content = JSON.stringify({ tasks, nextId, userLogs, nextUlId, adBaseData, savedAt: new Date().toISOString() });
-    const blob = new Blob([content], { type: 'application/json' });
-    let res;
-    if (driveFileId) {
-      // อัปเดตไฟล์เดิม
-      res = await fetch(
-        `https://www.googleapis.com/upload/drive/v3/files/${driveFileId}?uploadType=media`,
-        { method: 'PATCH', headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' }, body: blob }
+// ===== SAVE DATA TO SUPABASE =====
+async function saveTaskToSupabase(task) {
+  showSaveStatus('saving');
+  const payload = {
+    owner_id: currentUser.id,
+    date: task.date || null,
+    project: task.project, ticket: task.ticket,
+    type: task.type, description: task.desc, team: task.team,
+    status: task.status, start_date: task.start || null,
+    due_date: task.due || null, finish_date: task.finish || null,
+    issue: task.issue, fix: task.fix, result: task.result,
+    user_group: task.userGroup
+  };
+
+  if (task._dbId) {
+    // Update
+    const { error } = await sb.from('tasks').update(payload).eq('id', task._dbId);
+    if (error) throw error;
+    // ลบ task_users เก่าแล้วใส่ใหม่
+    await sb.from('task_users').delete().eq('task_id', task._dbId);
+    if (task.userRows?.length) {
+      await sb.from('task_users').insert(
+        task.userRows.map(u => ({
+          task_id: task._dbId, name: u.name,
+          sam_account: u.sam, email: u.email,
+          group_name: u.group, action: u.action
+        }))
       );
-    } else {
-      // สร้างไฟล์ใหม่
-      const meta = JSON.stringify({ name: FILE_NAME, mimeType: 'application/json' });
-      const form = new FormData();
-      form.append('metadata', new Blob([meta], { type: 'application/json' }));
-      form.append('file', blob);
-      res = await fetch(
-        'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',
-        { method: 'POST', headers: { Authorization: `Bearer ${accessToken}` }, body: form }
-      );
-      const created = await res.json();
-      driveFileId = created.id;
-      // ไม่บันทึก fileId ลง localStorage
     }
-    const now = new Date().toLocaleTimeString('th-TH');
-    setSyncState('connected', `✓ เชื่อมต่อแล้ว · Sync ล่าสุด: ${now}`);
-    pendingSave = false;
-  } catch(e) {
-    setSyncState('error', 'Sync ไม่สำเร็จ: ' + e.message);
-    console.error(e);
+  } else {
+    // Insert
+    const { data, error } = await sb.from('tasks').insert(payload).select().single();
+    if (error) throw error;
+    task._dbId = data.id;
+    task.id = data.id;
+    if (task.userRows?.length) {
+      await sb.from('task_users').insert(
+        task.userRows.map(u => ({
+          task_id: data.id, name: u.name,
+          sam_account: u.sam, email: u.email,
+          group_name: u.group, action: u.action
+        }))
+      );
+    }
+  }
+  showSaveStatus('saved');
+  return task;
+}
+
+async function deleteTaskFromSupabase(task) {
+  if (!task._dbId) return;
+  await sb.from('task_users').delete().eq('task_id', task._dbId);
+  await sb.from('tasks').delete().eq('id', task._dbId);
+}
+
+async function saveUserLogToSupabase(log) {
+  const payload = {
+    owner_id: currentUser.id,
+    task_id: log.taskId || null,
+    date: log.date || null,
+    action: log.action, name: log.name,
+    sam_account: log.sam, email: log.email,
+    group_name: log.group, ticket: log.ticket,
+    note: log.note, ad_status: log.adStatus
+  };
+  if (log._dbId) {
+    const { error } = await sb.from('user_logs').update(payload).eq('id', log._dbId);
+    if (error) throw error;
+  } else {
+    const { data, error } = await sb.from('user_logs').insert(payload).select().single();
+    if (error) throw error;
+    log._dbId = data.id; log.id = data.id;
   }
 }
 
-const AUTO_SYNC_INTERVAL = 300; // 5 นาที
-let countdownVal = AUTO_SYNC_INTERVAL;
-let countdownTimer = null;
+async function deleteUserLogFromSupabase(log) {
+  if (!log._dbId) return;
+  await sb.from('user_logs').delete().eq('id', log._dbId);
+}
 
+async function saveADBaseToSupabase(rows, importedBy) {
+  // ลบข้อมูลเก่าทั้งหมดก่อน
+  await sb.from('ad_base_data').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+  if (!rows.length) return;
+  const payload = rows.map(r => ({
+    name: r.Name || r.name,
+    sam_account: r.SamAccountName || r.sam_account,
+    email: r.Mail || r.email,
+    source_group: r.SourceGroup || r.source_group,
+    dept: r._dept || r.dept,
+    distinguished_name: r.DistinguishedName || r.distinguished_name || '',
+    imported_by: importedBy
+  }));
+  // Insert แบบ batch ทีละ 500
+  for (let i = 0; i < payload.length; i += 500) {
+    const { error } = await sb.from('ad_base_data').insert(payload.slice(i, i + 500));
+    if (error) throw error;
+  }
+}
+
+// ===== AUTO SYNC (ping เพื่อ keep alive) =====
 function startAutoSync() {
   if (syncTimer) clearInterval(syncTimer);
   if (countdownTimer) clearInterval(countdownTimer);
-
   countdownVal = AUTO_SYNC_INTERVAL;
-
-  // Auto sync ทุก 60 วินาที ไม่ว่าจะมีการเปลี่ยนแปลงหรือเปล่า
   syncTimer = setInterval(async () => {
-    if (accessToken) {
-      await saveToDrive();
+    if (currentUser) {
+      // Supabase realtime ไม่ต้อง sync เอง แค่ refresh สถานะ
+      const now = new Date().toLocaleTimeString('th-TH');
+      setSyncState('connected', `✓ ${currentProfile?.email} · ${now}`);
       countdownVal = AUTO_SYNC_INTERVAL;
     }
   }, AUTO_SYNC_INTERVAL * 1000);
-
-  // Countdown display ทุก 1 วินาที
   countdownTimer = setInterval(() => {
-    if (!accessToken) return;
+    if (!currentUser) return;
     countdownVal--;
     if (countdownVal < 0) countdownVal = AUTO_SYNC_INTERVAL;
     const cd = document.getElementById('sync-countdown');
@@ -1426,51 +1611,92 @@ function startAutoSync() {
       const min = Math.floor(countdownVal / 60);
       const sec = countdownVal % 60;
       const timeStr = min > 0 ? `${min}:${sec.toString().padStart(2,'0')} นาที` : `${sec}s`;
-      cd.textContent = pendingSave
-        ? `⏳ มีข้อมูลรอ Sync...`
-        : `· Auto sync ใน ${timeStr}`;
+      cd.textContent = pendingSave ? `⏳ กำลังบันทึก...` : `· refresh ใน ${timeStr}`;
     }
   }, 1000);
 }
 
 async function syncNow() {
-  if (!accessToken) { showToast('⚠️ กรุณาเชื่อมต่อ Google Drive ก่อนครับ'); return; }
-  await saveToDrive();
-  showToast('🔄 Sync ขึ้น Google Drive เรียบร้อยแล้ว');
+  if (!currentUser) { showToast('⚠️ กรุณาเข้าสู่ระบบก่อนครับ'); return; }
+  await loadAllData();
+  showToast('🔄 Refresh ข้อมูลเรียบร้อย');
 }
 
-// ===== LOCAL STORAGE =====
-function saveLocal() {
-  localStorage.setItem('pm_tasks', JSON.stringify(tasks));
-  localStorage.setItem('pm_nextId', nextId);
-}
-
-function loadData() {
-  // ไม่โหลดข้อมูลจาก localStorage อีกต่อไป
-  // ข้อมูลจะโหลดจาก Google Drive เท่านั้น
-  tasks = [];
-  nextId = 100;
-}
-
+// ===== SAVE DATA (เรียกแทน saveData เดิม) =====
 function saveData() {
-  saveLocal();
-  if (accessToken) {
-    pendingSave = true;
-    // debounce — save จริงหลังหยุดแก้ 5 วินาที
-    if (window._saveDebounce) clearTimeout(window._saveDebounce);
-    window._saveDebounce = setTimeout(() => {
-      saveToDrive();
-      countdownVal = AUTO_SYNC_INTERVAL; // reset countdown หลัง save
-    }, 5000);
+  // Supabase บันทึกทันทีผ่าน saveTaskToSupabase()
+  // ไม่ต้องทำ batch save แบบ Drive แล้ว
+}
+
+function saveLocal() {} // ไม่ใช้แล้ว
+function loadData() { tasks = []; nextId = 100; }
+
+function saveUserLogs() {
+  // บันทึกผ่าน saveUserLogToSupabase() แล้ว
+}
+function loadUserLogs() { userLogs = []; }
+
+// ===== IMPORT จาก Google Drive JSON (ข้อมูลเก่า) =====
+async function importFromDriveJSON(jsonData) {
+  if (!currentUser) return;
+  setSyncState('syncing', 'กำลัง Import ข้อมูลเก่า...');
+  try {
+    let imported = 0;
+    // Import tasks
+    for (const t of (jsonData.tasks || [])) {
+      const task = {
+        date: t.date, project: t.project, ticket: t.ticket,
+        type: t.type, desc: t.desc, team: t.team, status: t.status,
+        start: t.start, due: t.due, finish: t.finish,
+        issue: t.issue, fix: t.fix, result: t.result,
+        userGroup: t.userGroup, userRows: t.userRows || []
+      };
+      await saveTaskToSupabase(task);
+      imported++;
+    }
+    // Import user_logs
+    for (const l of (jsonData.userLogs || [])) {
+      const log = {
+        date: l.date, action: l.action, name: l.name,
+        sam: l.sam, email: l.email, group: l.group,
+        ticket: l.ticket, note: l.note, adStatus: l.adStatus
+      };
+      await saveUserLogToSupabase(log);
+    }
+    // Import ad_base_data
+    if (jsonData.adBaseData?.length) {
+      await saveADBaseToSupabase(jsonData.adBaseData, currentUser.id);
+    }
+    showToast(`✅ Import สำเร็จ ${imported} งาน`);
+    await loadAllData();
+  } catch(e) {
+    setSyncState('error', 'Import ไม่สำเร็จ: ' + e.message);
+    showToast('❌ Import ไม่สำเร็จ: ' + e.message);
   }
 }
 
-// ===== TRY AUTO-LOGIN (ปิดใช้งาน - ต้อง login ใหม่ทุกครั้ง) =====
-function tryAutoLogin() {
-  // ไม่ทำ auto-login เพื่อความปลอดภัย
-  // ล้าง token เก่าทิ้งทุกครั้งที่เปิดหน้าเว็บ
-  localStorage.removeItem('gdrive_token');
-  localStorage.removeItem('gdrive_file_id');
+// ===== TRY AUTO-LOGIN =====
+async function tryAutoLogin() {
+  const { data: { session } } = await sb.auth.getSession();
+  if (session) {
+    currentUser = session.user;
+    currentProfile = await getProfile();
+    setSyncState('syncing', 'กำลังโหลดข้อมูล...');
+    await loadAllData();
+  }
+  // Listen สำหรับ Auth state changes (หลัง redirect กลับมา)
+  sb.auth.onAuthStateChange(async (event, session) => {
+    if (event === 'SIGNED_IN' && session) {
+      currentUser = session.user;
+      currentProfile = await getProfile();
+      setSyncState('syncing', 'กำลังโหลดข้อมูล...');
+      await loadAllData();
+    } else if (event === 'SIGNED_OUT') {
+      currentUser = null; currentProfile = null;
+      tasks = []; userLogs = []; adBaseData = [];
+      setSyncState('disconnected', 'ยังไม่ได้เข้าสู่ระบบ');
+    }
+  });
 }
 
 // ===== NAVIGATION =====
@@ -1479,12 +1705,13 @@ function switchView(view, el) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('view-' + view).classList.add('active');
   if (el) el.classList.add('active');
-  const titles = {dashboard:'Dashboard', tasks:'รายการงาน', add:'เพิ่มงานใหม่', users:'User Management'};
+  const titles = {dashboard:'Dashboard', tasks:'รายการงาน', add:'เพิ่มงานใหม่', users:'User Management', team:'🏢 จัดการทีม'};
   document.getElementById('topbar-title').textContent = titles[view] || '';
   if (view === 'dashboard') renderDashboard();
   if (view === 'tasks') { currentPage = 1; renderTasks(); updateProjectFilter(); }
   if (view === 'add') { clearForm(); setToday(); }
   if (view === 'users') { renderUserLog(); updateGroupDatalist(); updateADBaseUI(); renderCurrentMembers(); }
+  if (view === 'team') { loadTeam(); }
 }
 
 function setToday() {
@@ -1772,7 +1999,7 @@ function clearForm() {
   document.getElementById('f-user-group').value = '';
 }
 
-function saveTask() {
+async function saveTask() {
   const date = document.getElementById('f-date').value;
   const project = document.getElementById('f-project').value.trim();
   const type = document.getElementById('f-type').value;
@@ -1789,12 +2016,28 @@ function saveTask() {
     userRows: (type === 'Add User' || type === 'Remove User') ? getUserRows('f') : []
   };
   tasks.push(task);
-  saveData();
-  autoSyncUserLogs(task);
-  showToast('✅ บันทึกงานเรียบร้อยแล้ว');
-  clearForm();
-  setToday();
-  updateProjectFilter();
+  try {
+    await saveTaskToSupabase(task);
+    // sync user logs สำหรับ task ใหม่
+    for (const u of (task.userRows || [])) {
+      if (!u.name && !u.sam) continue;
+      const log = {
+        taskId: task._dbId, date: task.date,
+        action: task.type === 'Add User' ? 'Add' : 'Remove',
+        name: u.name, sam: u.sam, email: u.email,
+        group: u.group || task.userGroup, ticket: task.ticket, note: '', adStatus: null
+      };
+      userLogs.push(log);
+      await saveUserLogToSupabase(log);
+    }
+    showToast('✅ บันทึกงานเรียบร้อยแล้ว');
+    renderDashboard(); renderUserLog(); updateProjectFilter();
+  } catch(e) {
+    showSaveStatus('error');
+    showToast('❌ บันทึกไม่สำเร็จ: ' + e.message);
+    tasks.pop();
+  }
+  clearForm(); setToday();
 }
 
 // ===== DETAIL =====
@@ -1827,8 +2070,12 @@ function showDetail(id) {
       ${t.result ? `<div class="detail-row"><div class="detail-key">ผลลัพธ์</div><div class="detail-val">${t.result}</div></div>` : ''}
     </div>` : ''}
   `;
+  transferTaskId = id;
   document.getElementById('detail-edit-btn').onclick = () => { closeModal('detail-modal'); openEdit(id); };
   document.getElementById('detail-delete-btn').onclick = () => { if (confirm('ยืนยันลบงานนี้?')) { deleteTask(id); closeModal('detail-modal'); } };
+  // แสดงปุ่มโอนงานเฉพาะ Admin
+  const transferBtn = document.getElementById('detail-transfer-btn');
+  if (transferBtn) transferBtn.style.display = currentProfile?.role === 'admin' ? '' : 'none';
   openModal('detail-modal');
 }
 
@@ -1857,7 +2104,7 @@ function openEdit(id) {
   openModal('edit-modal');
 }
 
-function updateTask() {
+async function updateTask() {
   const t = tasks.find(t => t.id === editingId);
   if (!t) return;
   t.date = document.getElementById('e-date').value;
@@ -1875,25 +2122,47 @@ function updateTask() {
   t.result = document.getElementById('e-result').value.trim();
   t.userGroup = document.getElementById('e-user-group').value;
   t.userRows = (t.type === 'Add User' || t.type === 'Remove User') ? getUserRows('e') : [];
-  saveData();
-  // ลบ UserLogs เก่าของ task นี้แล้วสร้างใหม่
-  userLogs = userLogs.filter(l => l.taskId !== t.id);
-  autoSyncUserLogs(t);
-  closeModal('edit-modal');
+  try {
+    await saveTaskToSupabase(t);
+    // อัปเดต user logs
+    userLogs = userLogs.filter(l => l.taskId !== t._dbId);
+    for (const u of (t.userRows || [])) {
+      if (!u.name && !u.sam) continue;
+      const log = {
+        taskId: t._dbId, date: t.date,
+        action: t.type === 'Add User' ? 'Add' : 'Remove',
+        name: u.name, sam: u.sam, email: u.email,
+        group: u.group || t.userGroup, ticket: t.ticket, note: '', adStatus: null
+      };
+      userLogs.push(log);
+      await saveUserLogToSupabase(log);
+    }
+    closeModal('edit-modal');
+    renderTasks(); updateProjectFilter(); renderDashboard(); renderUserLog();
+    showToast('✅ แก้ไขงานเรียบร้อยแล้ว');
+  } catch(e) {
+    showSaveStatus('error');
+    showToast('❌ แก้ไขไม่สำเร็จ: ' + e.message);
+  }
+}
   renderTasks();
   updateProjectFilter();
   showToast('✅ แก้ไขงานเรียบร้อยแล้ว');
 }
 
 // ===== DELETE =====
-function deleteTask(id) {
+async function deleteTask(id) {
   if (!confirm('ยืนยันการลบงานนี้?')) return;
-  tasks = tasks.filter(t => t.id !== id);
-  saveData();
-  renderTasks();
-  updateProjectFilter();
-  if (document.getElementById('view-dashboard').classList.contains('active')) renderDashboard();
-  showToast('🗑 ลบงานแล้ว');
+  const t = tasks.find(t => t.id === id);
+  if (!t) return;
+  try {
+    await deleteTaskFromSupabase(t);
+    tasks = tasks.filter(t => t.id !== id);
+    userLogs = userLogs.filter(l => l.taskId !== t._dbId);
+    renderTasks(); updateProjectFilter();
+    if (document.getElementById('view-dashboard').classList.contains('active')) renderDashboard();
+    showToast('🗑 ลบงานแล้ว');
+  } catch(e) { showToast('❌ ลบไม่สำเร็จ: ' + e.message); }
 }
 
 // ===== MODAL =====
@@ -2001,26 +2270,28 @@ function updateGroupDatalist() {
   dl.innerHTML = getAllGroups().map(g => `<option value="${g}">`).join('');
 }
 
-function saveUserLog() {
+async function saveUserLog() {
   const date = document.getElementById('ul-date').value;
   const action = document.getElementById('ul-action').value;
   const name = document.getElementById('ul-name').value.trim();
   const group = document.getElementById('ul-group').value.trim();
   if (!date || !action || !name || !group) { showToast('⚠️ กรุณากรอก วันที่ Action ชื่อ และ Group'); return; }
-  userLogs.push({
-    id: nextUlId++,
-    date, action, name,
+  const log = {
+    id: nextUlId++, date, action, name,
     sam: document.getElementById('ul-sam').value.trim(),
     email: document.getElementById('ul-email').value.trim(),
-    group,
-    ticket: document.getElementById('ul-ticket').value.trim(),
-    note: document.getElementById('ul-note').value.trim(),
-    adStatus: null
-  });
-  saveUserLogs();
-  clearUserLog();
-  renderUserLog();
-  showToast('✅ บันทึก User Log แล้ว');
+    group, ticket: document.getElementById('ul-ticket').value.trim(),
+    note: document.getElementById('ul-note').value.trim(), adStatus: null
+  };
+  userLogs.push(log);
+  try {
+    await saveUserLogToSupabase(log);
+    clearUserLog(); renderUserLog();
+    showToast('✅ บันทึก User Log แล้ว');
+  } catch(e) {
+    userLogs.pop();
+    showToast('❌ บันทึกไม่สำเร็จ: ' + e.message);
+  }
 }
 
 function clearUserLog() {
@@ -2032,12 +2303,15 @@ function clearUserLog() {
   document.getElementById('ul-date').value = today;
 }
 
-function deleteUserLog(id) {
+async function deleteUserLog(id) {
   if (!confirm('ยืนยันลบ User Log นี้?')) return;
-  userLogs = userLogs.filter(u => u.id !== id);
-  saveUserLogs();
-  renderUserLog();
-  showToast('🗑 ลบแล้ว');
+  const log = userLogs.find(u => u.id === id);
+  if (!log) return;
+  try {
+    await deleteUserLogFromSupabase(log);
+    userLogs = userLogs.filter(u => u.id !== id);
+    renderUserLog(); showToast('🗑 ลบแล้ว');
+  } catch(e) { showToast('❌ ลบไม่สำเร็จ: ' + e.message); }
 }
 
 function renderUserLog() {
@@ -2096,19 +2370,21 @@ function importADCSV(e) {
       : true;
 
     if (action) {
-      adBaseData = parsed; // แทนที่
+      adBaseData = parsed;
     } else {
-      // ผสาน: เพิ่มเฉพาะที่ยังไม่มี (เช็คจาก SamAccount+SourceGroup)
       const existingKeys = new Set(adBaseData.map(r => r['SamAccountName']+'|'+r['SourceGroup']));
       const newRows = parsed.filter(r => !existingKeys.has(r['SamAccountName']+'|'+r['SourceGroup']));
       adBaseData = [...adBaseData, ...newRows];
     }
-
-    adData = [...adBaseData]; // sync ให้ compare ใช้ได้ทันที
-    saveData(); // บันทึกลง Drive
-    updateADBaseUI();
-    showADPreview(parsed.slice(0,5), adBaseData.length, file.name);
-    showToast(`✅ Import AD ตั้งต้น ${adBaseData.length} records · บันทึกลง Drive แล้ว`);
+    adData = [...adBaseData];
+    try {
+      await saveADBaseToSupabase(adBaseData, currentUser?.id);
+      updateADBaseUI();
+      showADPreview(parsed.slice(0,5), adBaseData.length, file.name);
+      showToast(`✅ Import AD ตั้งต้น ${adBaseData.length} records · บันทึกลง Supabase แล้ว`);
+    } catch(e) {
+      showToast('❌ บันทึก AD ไม่สำเร็จ: ' + e.message);
+    }
     e.target.value = '';
   };
   reader.readAsText(file, 'UTF-8');
@@ -2146,17 +2422,19 @@ function showADPreview(rows, total, fname) {
     </tr>`).join('')}</tbody>`;
 }
 
-function clearADBase() {
+async function clearADBase() {
   if (!confirm('ยืนยันลบข้อมูล AD ตั้งต้นทั้งหมด?')) return;
-  adBaseData = []; adData = [];
-  document.getElementById('ad-preview').style.display = 'none';
-  updateADBaseUI();
-  document.getElementById('um-s2').textContent = '-';
-  document.getElementById('um-s3').textContent = '-';
-  document.getElementById('um-s4').textContent = '-';
-  userLogs.forEach(u => u.adStatus = null);
-  saveData(); saveUserLogs(); renderUserLog();
-  showToast('🗑 ลบข้อมูล AD ตั้งต้นแล้ว');
+  try {
+    await saveADBaseToSupabase([], currentUser?.id);
+    adBaseData = []; adData = [];
+    document.getElementById('ad-preview').style.display = 'none';
+    updateADBaseUI();
+    document.getElementById('um-s2').textContent = '-';
+    document.getElementById('um-s3').textContent = '-';
+    document.getElementById('um-s4').textContent = '-';
+    userLogs.forEach(u => u.adStatus = null);
+    renderUserLog(); showToast('🗑 ลบข้อมูล AD ตั้งต้นแล้ว');
+  } catch(e) { showToast('❌ ลบไม่สำเร็จ: ' + e.message); }
 }
 
 // ===== คำนวณสมาชิกปัจจุบัน (AD Base + Log) =====
@@ -2499,25 +2777,220 @@ function closeBriefing() {
   closeModal('briefing-modal');
 }
 
+// ===== TEAM MANAGEMENT =====
+let teamMembers = []; // cache profiles
+let transferTaskId = null;
+
+async function loadTeam() {
+  if (!currentUser) return;
+  try {
+    const { data, error } = await sb.from('profiles').select('*').order('created_at');
+    if (error) throw error;
+    teamMembers = data || [];
+    renderTeam();
+    populateTransferSelects();
+    document.getElementById('team-count').textContent = `${teamMembers.length} สมาชิก`;
+  } catch(e) { showToast('❌ โหลดข้อมูลทีมไม่สำเร็จ: ' + e.message); }
+}
+
+function renderTeam() {
+  const search = (document.getElementById('team-search')?.value || '').toLowerCase();
+  const roleFilter = document.getElementById('team-filter-role')?.value || '';
+  const filtered = teamMembers.filter(m =>
+    (!search || m.email?.toLowerCase().includes(search) || m.full_name?.toLowerCase().includes(search)) &&
+    (!roleFilter || m.role === roleFilter)
+  );
+  const container = document.getElementById('team-grid');
+  if (!filtered.length) {
+    container.innerHTML = `<div class="empty"><div class="empty-icon">👥</div><div class="empty-text">ไม่พบสมาชิก</div></div>`;
+    return;
+  }
+  // นับงานแต่ละคน
+  const taskCount = {};
+  const inProgressCount = {};
+  tasks.forEach(t => {
+    taskCount[t.owner_id] = (taskCount[t.owner_id] || 0) + 1;
+    if (t.status === 'In Progress') inProgressCount[t.owner_id] = (inProgressCount[t.owner_id] || 0) + 1;
+  });
+  container.innerHTML = `<div class="team-grid">${filtered.map(m => {
+    const initials = (m.full_name || m.email || '?').charAt(0).toUpperCase();
+    const isMe = m.id === currentUser?.id;
+    const roleBadge = m.role === 'admin'
+      ? `<span class="role-badge-admin">👑 Admin</span>`
+      : `<span class="role-badge-member">👤 Member</span>`;
+    const tc = taskCount[m.id] || 0;
+    const ipc = inProgressCount[m.id] || 0;
+    return `
+      <div class="member-card">
+        <div class="member-card-top">
+          <div class="member-avatar">${initials}</div>
+          <div class="member-info">
+            <div class="member-name">${m.full_name || '-'} ${isMe ? '<span style="font-size:10px;color:var(--text3)">(คุณ)</span>' : ''}</div>
+            <div class="member-email">${m.email}</div>
+          </div>
+          ${roleBadge}
+        </div>
+        <div class="member-stats">
+          <div class="member-stat"><div class="member-stat-val">${tc}</div><div>งานทั้งหมด</div></div>
+          <div class="member-stat"><div class="member-stat-val" style="color:#e0920a">${ipc}</div><div>กำลังทำ</div></div>
+          <div class="member-stat"><div class="member-stat-val" style="font-size:12px;color:var(--text3)">${new Date(m.created_at).toLocaleDateString('th-TH')}</div><div>เข้าร่วม</div></div>
+        </div>
+        <div class="member-actions">
+          ${m.role === 'admin'
+            ? `<button class="btn" style="flex:1;font-size:12px" onclick="changeRole('${m.id}','member')" ${isMe?'disabled':''}>เปลี่ยนเป็น Member</button>`
+            : `<button class="btn btn-primary" style="flex:1;font-size:12px" onclick="changeRole('${m.id}','admin')">เปลี่ยนเป็น Admin</button>`
+          }
+        </div>
+      </div>`;
+  }).join('')}</div>`;
+}
+
+async function changeRole(userId, newRole) {
+  if (!confirm(`ยืนยันเปลี่ยน Role เป็น "${newRole}"?`)) return;
+  try {
+    const { error } = await sb.from('profiles').update({ role: newRole }).eq('id', userId);
+    if (error) throw error;
+    const m = teamMembers.find(m => m.id === userId);
+    if (m) m.role = newRole;
+    renderTeam();
+    showSaveStatus('saved');
+    showToast(`✅ เปลี่ยน Role เป็น ${newRole} แล้ว`);
+  } catch(e) { showToast('❌ เปลี่ยน Role ไม่สำเร็จ: ' + e.message); }
+}
+
+function populateTransferSelects() {
+  const opts = teamMembers.map(m =>
+    `<option value="${m.id}">${m.full_name || m.email} (${m.role})</option>`
+  ).join('');
+  ['transfer-from','transfer-to','transfer-to-single'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { const cur = el.value; el.innerHTML = `<option value="">-- เลือกสมาชิก --</option>` + opts; el.value = cur; }
+  });
+}
+
+async function loadTransferTasks() {
+  const fromId = document.getElementById('transfer-from').value;
+  const container = document.getElementById('transfer-tasks-list');
+  if (!fromId) { container.innerHTML = ''; return; }
+  const memberTasks = tasks.filter(t => t.owner_id === fromId);
+  if (!memberTasks.length) {
+    container.innerHTML = `<div style="font-size:13px;color:var(--text3);padding:8px 0">ไม่มีงานของสมาชิกคนนี้</div>`;
+    return;
+  }
+  container.innerHTML = `
+    <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:8px">เลือกงานที่ต้องการโอน (${memberTasks.length} งาน)</div>
+    <div style="max-height:260px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius)">
+      <table class="um-table" style="width:100%">
+        <thead><tr>
+          <th><input type="checkbox" id="transfer-check-all" onchange="toggleAllTransfer(this)"></th>
+          <th>วันที่</th><th>โปรเจกต์</th><th>รายละเอียด</th><th>สถานะ</th>
+        </tr></thead>
+        <tbody>${memberTasks.map(t => `
+          <tr>
+            <td><input type="checkbox" class="transfer-check" value="${t.id}"></td>
+            <td style="font-size:11px;white-space:nowrap">${formatDate(t.date)}</td>
+            <td style="font-size:12px;font-weight:500">${t.project||'-'}</td>
+            <td style="font-size:12px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${t.desc}">${t.desc}</td>
+            <td><span class="badge ${badgeClass(t.status)}">${t.status}</span></td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+function toggleAllTransfer(cb) {
+  document.querySelectorAll('.transfer-check').forEach(c => c.checked = cb.checked);
+}
+
+async function doTransferTasks() {
+  const toId = document.getElementById('transfer-to').value;
+  const checked = [...document.querySelectorAll('.transfer-check:checked')].map(c => c.value);
+  if (!toId) { showToast('⚠️ เลือกสมาชิกปลายทางก่อนครับ'); return; }
+  if (!checked.length) { showToast('⚠️ เลือกงานที่ต้องการโอนก่อนครับ'); return; }
+  const toMember = teamMembers.find(m => m.id === toId);
+  if (!confirm(`ยืนยันโอน ${checked.length} งาน ให้ ${toMember?.full_name || toMember?.email}?`)) return;
+  showSaveStatus('saving');
+  try {
+    for (const taskId of checked) {
+      await sb.from('tasks').update({ owner_id: toId }).eq('id', taskId);
+      const t = tasks.find(t => t.id === taskId);
+      if (t) t.owner_id = toId;
+    }
+    showSaveStatus('saved');
+    showToast(`✅ โอน ${checked.length} งาน เรียบร้อยแล้ว`);
+    loadTransferTasks();
+    renderDashboard();
+  } catch(e) {
+    showSaveStatus('error');
+    showToast('❌ โอนงานไม่สำเร็จ: ' + e.message);
+  }
+}
+
+// โอนงานจาก Detail Modal
+function openTransferModal() {
+  if (!teamMembers.length) { showToast('⚠️ ยังไม่ได้โหลดข้อมูลทีม ไปหน้าจัดการทีมก่อนครับ'); return; }
+  const t = tasks.find(t => t.id === transferTaskId);
+  if (!t) return;
+  document.getElementById('transfer-task-desc').innerHTML =
+    `<strong>${t.project}</strong> · ${t.desc?.substring(0,80)}${t.desc?.length>80?'...':''}`;
+  populateTransferSelects();
+  document.getElementById('transfer-to-single').value = '';
+  openModal('transfer-modal');
+}
+
+async function doTransferSingle() {
+  const toId = document.getElementById('transfer-to-single').value;
+  if (!toId) { showToast('⚠️ เลือกสมาชิกปลายทางก่อนครับ'); return; }
+  const t = tasks.find(t => t.id === transferTaskId);
+  const toMember = teamMembers.find(m => m.id === toId);
+  if (!confirm(`ยืนยันโอนงานนี้ให้ ${toMember?.full_name || toMember?.email}?`)) return;
+  showSaveStatus('saving');
+  try {
+    await sb.from('tasks').update({ owner_id: toId }).eq('id', t._dbId);
+    t.owner_id = toId;
+    showSaveStatus('saved');
+    closeModal('transfer-modal');
+    closeModal('detail-modal');
+    renderTasks(); renderDashboard();
+    showToast(`✅ โอนงานให้ ${toMember?.full_name || toMember?.email} แล้ว`);
+  } catch(e) {
+    showSaveStatus('error');
+    showToast('❌ โอนงานไม่สำเร็จ: ' + e.message);
+  }
+}
+
+// ===== IMPORT ข้อมูลเก่าจาก Google Drive JSON =====
+function triggerImportJSON() {
+  if (!currentUser) { showToast('⚠️ กรุณาเข้าสู่ระบบก่อนครับ'); return; }
+  const input = document.createElement('input');
+  input.type = 'file'; input.accept = '.json';
+  input.onchange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (ev) => {
+      try {
+        const data = JSON.parse(ev.target.result);
+        if (!data.tasks) { showToast('❌ ไฟล์ไม่ถูกต้อง ต้องเป็น pm_tracker_data.json'); return; }
+        if (confirm(`พบข้อมูล ${data.tasks.length} งาน · ${(data.userLogs||[]).length} user logs\nต้องการ Import เข้า Supabase?`)) {
+          await importFromDriveJSON(data);
+        }
+      } catch(e2) { showToast('❌ อ่านไฟล์ไม่สำเร็จ: ' + e2.message); }
+    };
+    reader.readAsText(file, 'UTF-8');
+  };
+  input.click();
+}
+
 // ===== INIT =====
 loadData();
 loadUserLogs();
 renderDashboard();
 updateProjectFilter();
-// ล้าง token เก่าและแสดงหน้า login ทุกครั้งที่เปิด
-window.addEventListener('load', () => setTimeout(tryAutoLogin, 800));
-
-// ตัดการเชื่อมต่อเมื่อปิดหน้าเว็บหรือ tab เท่านั้น
+window.addEventListener('load', () => setTimeout(tryAutoLogin, 300));
 window.addEventListener('beforeunload', () => {
   if (syncTimer) clearInterval(syncTimer);
   if (countdownTimer) clearInterval(countdownTimer);
-  if (accessToken) {
-    google.accounts.oauth2.revoke(accessToken, () => {});
-    accessToken = null;
-    driveFileId = null;
-  }
-  localStorage.removeItem('gdrive_token');
-  localStorage.removeItem('gdrive_file_id');
 });
 </script>
 </body>
